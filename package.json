@@ -1,0 +1,16 @@
+{
+  "name": "am-i-eligible",
+  "version": "1.0.0",
+  "description": "Welfare scheme discovery prototype — Express + SQLite backend with a rule-based eligibility engine.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.19.2"
+  }
+}

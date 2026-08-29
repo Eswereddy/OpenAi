@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kya Main Patra Hoon? — Am I Eligible?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1C2B44;
+    --ink-soft:#34456B;
+    --paper:#EDEEE6;
+    --card:#FBFAF5;
+    --turmeric:#D98A06;
+    --turmeric-deep:#B8730A;
+    --stamp:#9C3B2E;
+    --relief:#3E6B4F;
+    --slate:#5B6472;
+    --line:#D4D0C2;
+    --focus:#2B5FE0;
+    --radius:10px;
+    --display: 'Zilla Slab', Georgia, serif;
+    --body: 'Inter', -apple-system, sans-serif;
+    --mono: 'IBM Plex Mono', 'Courier New', monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--body); font-size:16px; line-height:1.5;
+    min-height:100vh;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; opacity:.035; z-index:0;
+    background-image: radial-gradient(circle at 1px 1px, #000 1px, transparent 0);
+    background-size: 18px 18px;
+  }
+  a{color:inherit;}
+  button{font-family:inherit;}
+  :focus-visible{outline:3px solid var(--focus); outline-offset:2px;}
+  .view{display:none; position:relative; z-index:1;}
+  .view.active{display:block;}
+  h1,h2,h3{font-family:var(--display); margin:0; font-weight:700; letter-spacing:-.01em;}
+  .wrap{max-width:640px; margin:0 auto; padding:0 20px;}
+
+  /* Topbar */
+  .topbar{
+    background:var(--ink); color:#F4F2EA; padding:14px 20px;
+    display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:20;
+    border-bottom:3px solid var(--turmeric);
+  }
+  .topbar .mark{
+    width:34px; height:34px; border-radius:50%; border:2px solid var(--turmeric);
+    display:flex; align-items:center; justify-content:center; font-family:var(--display);
+    font-weight:700; font-size:15px; flex-shrink:0;
+  }
+  .topbar .name{font-family:var(--display); font-size:17px; font-weight:600; line-height:1.15;}
+  .topbar .name small{display:block; font-family:var(--body); font-weight:400; font-size:11px; opacity:.7; letter-spacing:.02em;}
+
+  /* Landing */
+  .hero{padding:36px 0 24px;}
+  .eyebrow{
+    display:inline-block; font-family:var(--mono); font-size:12px; letter-spacing:.06em;
+    color:var(--stamp); border:1px solid var(--stamp); padding:3px 9px; border-radius:20px; margin-bottom:16px;
+  }
+  .hero h1{font-size:34px; line-height:1.15; margin-bottom:14px;}
+  .hero p.lead{font-size:16.5px; color:var(--ink-soft); margin-bottom:22px;}
+  .stat-row{display:flex; gap:12px; margin:20px 0 26px; flex-wrap:wrap;}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; flex:1; min-width:130px;}
+  .stat b{font-family:var(--mono); font-size:20px; display:block; color:var(--stamp);}
+  .stat span{font-size:12.5px; color:var(--slate);}
+  .btn-primary{
+    background:var(--stamp); color:#fff; border:none; padding:16px 22px; font-size:16.5px;
+    font-weight:600; border-radius:var(--radius); cursor:pointer; width:100%;
+    box-shadow:0 3px 0 var(--turmeric-deep); transition:transform .08s ease;
+  }
+  .btn-primary:active{transform:translateY(2px); box-shadow:0 1px 0 var(--turmeric-deep);}
+  .btn-secondary{
+    background:transparent; border:1.5px solid var(--ink); color:var(--ink); padding:13px 20px;
+    font-size:15px; font-weight:600; border-radius:var(--radius); cursor:pointer; width:100%;
+  }
+  .fine{font-size:12.5px; color:var(--slate); margin-top:10px; text-align:center;}
+  .example-tags{display:flex; flex-wrap:wrap; gap:8px; margin:20px 0;}
+  .example-tags span{
+    font-size:12.5px; background:var(--card); border:1px solid var(--line); padding:6px 11px;
+    border-radius:20px; color:var(--ink-soft);
+  }
+
+  /* Perforated progress */
+  .formhead{padding:18px 0 6px; position:sticky; top:63px; background:var(--paper); z-index:10;}
+  .ticket{display:flex; align-items:center; gap:2px; margin-bottom:6px;}
+  .perf{flex:1; height:8px; border-radius:2px; background:var(--line); position:relative; overflow:hidden;}
+  .perf.done{background:var(--stamp);}
+  .step-label{font-family:var(--mono); font-size:12px; color:var(--slate); display:flex; justify-content:space-between; margin-bottom:14px;}
+
+  .card-panel{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 20px; margin:16px 0;}
+  .q-title{font-family:var(--display); font-size:22px; margin-bottom:6px;}
+  .q-sub{font-size:14px; color:var(--slate); margin-bottom:18px;}
+  .field label{display:block; font-size:13.5px; font-weight:600; margin-bottom:7px; color:var(--ink-soft);}
+  input[type=number], select, input[type=text]{
+    width:100%; padding:13px 14px; border:1.5px solid var(--line); border-radius:8px; font-size:16px;
+    background:#fff; color:var(--ink); font-family:var(--body);
+  }
+  .choice-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;}
+  .choice{
+    border:1.5px solid var(--line); background:#fff; border-radius:10px; padding:14px 12px;
+    font-size:14.5px; font-weight:600; text-align:left; cursor:pointer; min-height:52px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .choice.selected{border-color:var(--stamp); background:#FBEDE9; color:var(--stamp);}
+  .checklist{display:flex; flex-direction:column; gap:10px; margin-bottom:6px;}
+  .check-row{
+    display:flex; align-items:flex-start; gap:12px; border:1.5px solid var(--line); background:#fff;
+    padding:13px 14px; border-radius:10px; cursor:pointer;
+  }
+  .check-row input{margin-top:3px; width:19px; height:19px; flex-shrink:0;}
+  .check-row.selected{border-color:var(--turmeric-deep); background:#FCF3E3;}
+  .nav-row{display:flex; gap:10px; margin:18px 0 40px;}
+  .nav-row .btn-secondary, .nav-row .btn-primary{width:auto; flex:1;}
+
+  /* Results */
+  .results-head{padding:26px 0 10px;}
+  .results-head .amount{font-family:var(--mono); color:var(--relief); font-size:15px;}
+  .scheme-card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 18px 16px;
+    margin:14px 0; position:relative;
+  }
+  .stamp-badge{
+    position:absolute; top:14px; right:14px; width:74px; height:74px; border-radius:50%;
+    border:2.5px dashed var(--stamp); color:var(--stamp); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; transform:rotate(-9deg); font-family:var(--mono);
+    text-align:center; line-height:1.15; flex-shrink:0;
+  }
+  .stamp-badge.partial{border-color:var(--turmeric-deep); color:var(--turmeric-deep);}
+  .stamp-badge b{font-size:10.5px; letter-spacing:.02em;}
+  .stamp-badge span{font-size:9px;}
+  .scheme-card h3{font-size:18px; padding-right:80px; margin-bottom:4px;}
+  .scheme-card .tag{font-size:12px; color:var(--slate); margin-bottom:10px;}
+  .scheme-card .benefit{font-family:var(--mono); color:var(--relief); font-size:14.5px; font-weight:600; margin-bottom:10px;}
+  .link-btn{
+    background:none; border:none; color:var(--ink); font-weight:700; font-size:13.5px;
+    text-decoration:underline; cursor:pointer; padding:0;
+  }
+  .no-match{text-align:center; padding:30px 10px; color:var(--slate);}
+
+  /* Detail overlay */
+  .overlay{position:fixed; inset:0; background:rgba(28,43,68,.55); z-index:100; display:none; align-items:flex-end; justify-content:center;}
+  .overlay.active{display:flex;}
+  .sheet{
+    background:var(--paper); width:100%; max-width:640px; max-height:88vh; overflow-y:auto;
+    border-radius:20px 20px 0 0; padding:22px 20px 30px; position:relative;
+  }
+  .sheet-close{
+    position:absolute; top:14px; right:16px; background:var(--ink); color:#fff; border:none;
+    width:34px; height:34px; border-radius:50%; font-size:18px; cursor:pointer;
+  }
+  .sheet h2{font-size:23px; margin:6px 0 4px; padding-right:40px;}
+  .sheet .dept{font-size:13px; color:var(--slate); margin-bottom:16px;}
+  .why-box{background:#fff; border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:16px;}
+  .why-box h4{font-family:var(--body); font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--slate); margin-bottom:8px;}
+  .why-box ul{margin:0; padding-left:18px; font-size:14.5px;}
+  .why-box li{margin-bottom:5px;}
+  .doc-list{list-style:none; padding:0; margin:0 0 18px;}
+  .doc-list li{
+    display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:14.5px;
+  }
+  .doc-list li::before{content:"▢"; color:var(--stamp); font-size:16px;}
+  .action-row{display:flex; gap:10px; margin-top:16px;}
+  .btn-wa{
+    background:var(--relief); color:#fff; border:none; padding:14px; border-radius:10px; font-weight:600;
+    font-size:14.5px; flex:1; cursor:pointer;
+  }
+
+  /* Confirmation modal */
+  .confirm-box{background:#fff; border:1.5px dashed var(--relief); border-radius:12px; padding:18px; margin-top:14px; display:none;}
+  .confirm-box.active{display:block;}
+  .confirm-box .id{font-family:var(--mono); color:var(--relief); font-size:16px; font-weight:600;}
+
+  /* Honesty / about panel */
+  details{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:20px 0;}
+  summary{cursor:pointer; font-weight:600; font-size:14.5px;}
+  details p, details li{font-size:13.5px; color:var(--ink-soft); line-height:1.6;}
+  .disclosure-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px;}
+  .disclosure-grid h5{font-size:12px; text-transform:uppercase; letter-spacing:.03em; margin:0 0 6px; color:var(--slate);}
+  .disclosure-grid ul{margin:0; padding-left:16px;}
+  .disclosure-grid li{margin-bottom:5px;}
+
+  footer{padding:30px 0 60px; text-align:center; font-size:12.5px; color:var(--slate);}
+
+  @media (prefers-reduced-motion:no-preference){
+    .scheme-card{animation:stampIn .35s ease both;}
+    @keyframes stampIn{from{opacity:0; transform:translateY(6px) scale(.98);} to{opacity:1; transform:none;}}
+  }
+  @media (min-width:640px){
+    .choice-grid{grid-template-columns:1fr 1fr 1fr;}
+    .hero h1{font-size:40px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="mark">GOV</div>
+  <div class="name">Am I Eligible?<small>Prototype · not an official government service</small></div>
+</div>
+
+<!-- LANDING -->
+<div class="view active" id="view-landing">
+  <div class="wrap hero">
+    <span class="eyebrow">DEMO · MOCK DATA ONLY</span>
+    <h1>Kya main patra hoon?<br>Find out what you already qualify for.</h1>
+    <p class="lead">India runs over a thousand welfare schemes — pensions, scholarships, insurance, housing. Most people never hear about the ones they already qualify for. Answer five short questions and see your matches, explained in plain language.</p>
+
+    <div class="stat-row">
+      <div class="stat"><b>16</b><span>schemes checked</span></div>
+      <div class="stat"><b>~90s</b><span>to complete</span></div>
+      <div class="stat"><b>0</b><span>documents uploaded here</span></div>
+    </div>
+
+    <button class="btn-primary" onclick="goTo('view-form'); renderStep();">Check schemes for me →</button>
+    <p class="fine">No login. No Aadhaar. Nothing you type here leaves your browser.</p>
+
+    <div class="example-tags">
+      <span>👩‍🌾 Farmers</span><span>🎓 Students</span><span>👵 Senior citizens</span>
+      <span>🤰 New mothers</span><span>🛠️ Daily-wage workers</span><span>♿ Persons with disability</span>
+    </div>
+
+    <details>
+      <summary>What's real here, and what's mocked?</summary>
+      <div class="disclosure-grid">
+        <div>
+          <h5>Actually working</h5>
+          <ul>
+            <li>A real backend (Node/Express) with a rule-based eligibility engine</li>
+            <li>A real SQLite database serving scheme data and logging anonymised match stats</li>
+            <li>Plain-language, explainable results with a live/offline indicator</li>
+            <li>Falls back to on-device matching if the connection is slow</li>
+            <li>The WhatsApp share link</li>
+          </ul>
+        </div>
+        <div>
+          <h5>Mocked for this demo</h5>
+          <ul>
+            <li>The 16 schemes use publicly known, general criteria — not a live government feed</li>
+            <li>"Start application" doesn't submit anywhere real</li>
+            <li>No OTP, payment or ID verification, by design</li>
+          </ul>
+        </div>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- FORM -->
+<div class="view" id="view-form">
+  <div class="wrap">
+    <div class="formhead">
+      <div class="ticket" id="ticket-strip"></div>
+      <div class="step-label"><span id="step-label-text">Step 1 of 5</span><span id="step-name"></span></div>
+    </div>
+
+    <div id="step-container"></div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div class="view" id="view-results">
+  <div class="wrap">
+    <div class="results-head">
+      <span class="eyebrow">YOUR RESULTS</span>
+      <h2 id="results-title">Checking your matches…</h2>
+      <p class="amount" id="results-amount"></p>
+    </div>
+    <div id="results-list"></div>
+    <details>
+      <summary>Why did I get these results?</summary>
+      <p>Each scheme has published eligibility rules (age, income, occupation, category, and similar). We compared your five answers against those rules. "Eligible" means you meet every rule we checked; "Partial match" means you meet most of them but one detail (like an exact income cut-off in your state) needs checking on the official portal.</p>
+    </details>
+    <button class="btn-secondary" style="margin-top:16px;" onclick="restart()">Start over with different details</button>
+    <footer>This is a hackathon prototype built to demonstrate a better citizen journey. It is not affiliated with, endorsed by, or connected to the Government of India. Always confirm details on the official scheme portal before applying.</footer>
+  </div>
+</div>
+
+<!-- DETAIL OVERLAY -->
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <button class="sheet-close" onclick="closeSheet()" aria-label="Close">✕</button>
+    <div id="sheet-content"></div>
+  </div>
+</div>
+
+<script>
+/* ---------------- DATA MODEL ---------------- */
+const profile = { age:null, gender:null, state:null, occupation:null, income:null, category:null,
+  widow:false, maternity:false, disability:false, farmland:false, bankAccount:false, noPuccaHouse:false };
+
+const STATES = ["Andhra Pradesh","Assam","Bihar","Chhattisgarh","Delhi","Gujarat","Haryana","Karnataka",
+"Kerala","Madhya Pradesh","Maharashtra","Odisha","Punjab","Rajasthan","Tamil Nadu","Telangana",
+"Uttar Pradesh","West Bengal","Other state / UT"];
+
+const INCOME_BANDS = [
+  {id:"b0", label:"Below ₹1 lakh / year", val:0.5},
+  {id:"b1", label:"₹1 – 3 lakh / year", val:2},
+  {id:"b2", label:"₹3 – 6 lakh / year", val:4.5},
+  {id:"b3", label:"₹6 – 8 lakh / year", val:7},
+  {id:"b4", label:"Above ₹8 lakh / year", val:9},
+];
+
+const OCCUPATIONS = ["Farmer","Student","Daily-wage / unorganised worker","Self-employed / artisan",
+"Homemaker","Unemployed","Senior citizen / retired","Other"];
+
+/* ---------------- HELPERS ---------------- */
+function stateNote(p, kind){
+  const st = p.state && p.state!=="Other state / UT" ? p.state : "your state";
+  if(kind==="income") return `Exact income cut-off for ${st} may differ from the national baseline — confirm with your local CSC/e-mitra center.`;
+  if(kind==="landholding") return `Landholding limits can vary by district in ${st} — confirm with the local revenue office.`;
+  return `Some conditions vary by state — verify with your local office.`;
+}
+// reasons now use {met:[...], watch:[...]} so "why you matched" can separate confirmed vs uncertain criteria
+function result(status, met, watch){ return {status, reasons:{met, watch:watch||[]}}; }
+
+/* ---------------- OFFLINE FALLBACK SCHEME DATABASE ----------------
+   The app tries the live backend (SQLite-backed API) first. If the network
+   is slow or drops — a real scenario on the connections this is built for —
+   it falls back to this identical rules engine running locally, so the
+   citizen journey never breaks. This mirrors the LOCAL_SCHEMES array the
+   backend's schemes.js file uses as its source of truth. */
+const LOCAL_SCHEMES = [
+  { id:"pmkisan", name:"PM-KISAN", dept:"Ministry of Agriculture", benefit:"₹6,000/year, direct transfer",
+    tag:"For small & marginal farmers", docs:["Aadhaar card","Land record / khatauni","Bank passbook"],
+    check:p=>{
+      if(p.occupation!=="Farmer") return null;
+      const ok = p.farmland;
+      return ok ? result("eligible", ["Occupation: Farmer","Owns farmland"])
+                : result("partial", ["Occupation: Farmer"], [stateNote(p,"landholding")]);
+    }},
+  { id:"pmfby", name:"Pradhan Mantri Fasal Bima Yojana", dept:"Ministry of Agriculture", benefit:"Crop insurance premium subsidy",
+    tag:"Crop insurance for farmers", docs:["Aadhaar card","Land record","Bank passbook","Sowing certificate"],
+    check:p=>{ if(p.occupation!=="Farmer") return null;
+      return p.farmland ? result("eligible", ["Occupation: Farmer","Owns farmland"])
+                         : result("partial", ["Occupation: Farmer"], [stateNote(p,"landholding")]); }},
+  { id:"pmvishwakarma", name:"PM Vishwakarma", dept:"Ministry of MSME", benefit:"Toolkit support + collateral-free loan up to ₹3 lakh",
+    tag:"For traditional artisans & craftspeople", docs:["Aadhaar card","Proof of traditional trade","Bank passbook"],
+    check:p=>{ if(p.occupation!=="Self-employed / artisan") return null;
+      return result("partial", ["Occupation: Self-employed / artisan"], ["Trade must be on the notified artisan list — verify at your nearest CSC"]); }},
+  { id:"nsp-postmatric", name:"Post-Matric Scholarship", dept:"National Scholarship Portal", benefit:"Tuition + maintenance allowance",
+    tag:"For SC/ST/OBC/EWS students", docs:["Aadhaar card","Caste/EWS certificate","Income certificate","Previous mark sheet"],
+    check:p=>{
+      if(p.occupation!=="Student") return null;
+      const catOk = ["SC","ST","OBC","EWS"].includes(p.category);
+      if(!catOk) return null;
+      const incOk = p.income<=4.5;
+      return incOk ? result("eligible", [`Category: ${p.category}`, "Household income within limit"])
+                   : result("partial", [`Category: ${p.category}`], [stateNote(p,"income")]);
+    }},
+  { id:"nsp-prematric", name:"Pre-Matric Scholarship", dept:"National Scholarship Portal", benefit:"Annual education allowance",
+    tag:"For students in classes 9–10", docs:["Aadhaar card","School ID","Caste/minority certificate","Income certificate"],
+    check:p=>{ if(p.occupation!=="Student"||p.age>17) return null; const catOk=["SC","ST","OBC","EWS"].includes(p.category);
+      return catOk ? result("eligible", [`Category: ${p.category}`,"Age matches school-going range"]) : null; }},
+  { id:"nmms", name:"National Means-cum-Merit Scholarship", dept:"Ministry of Education", benefit:"₹12,000/year",
+    tag:"Meritorious students from low-income households", docs:["Aadhaar card","Income certificate","Class 8 marksheet"],
+    check:p=>{ if(p.occupation!=="Student"||p.income>3.5) return null;
+      return result("partial", ["Household income within general limit"], ["Merit cut-off is exam-based and isn't assessed by this form"]); }},
+  { id:"ignoaps", name:"Old Age Pension (IGNOAPS)", dept:"Ministry of Rural Development", benefit:"₹200–500+/month (state top-ups vary)",
+    tag:"For senior citizens below poverty line", docs:["Aadhaar card","Age proof","BPL/income certificate"],
+    check:p=>{
+      if(p.age<60) return null;
+      return p.income<=1 ? result("eligible", ["Age 60+","Income within BPL-equivalent range"])
+                          : result("partial", ["Age 60+"], [stateNote(p,"income")]);
+    }},
+  { id:"widow-pension", name:"Widow Pension Scheme", dept:"Ministry of Rural Development", benefit:"Monthly pension (state-administered)",
+    tag:"For widows aged 40–79, low income", docs:["Aadhaar card","Husband's death certificate","Income certificate"],
+    check:p=>{ if(!p.widow||p.age<40||p.age>79) return null;
+      return p.income<=1 ? result("eligible", ["Marked as widow","Age within 40–79 range"])
+                          : result("partial", ["Marked as widow","Age within 40–79 range"], [stateNote(p,"income")]); }},
+  { id:"disability-pension", name:"Disability Pension Scheme", dept:"Ministry of Rural Development", benefit:"Monthly pension (state-administered)",
+    tag:"For persons with 80%+ disability, low income", docs:["Aadhaar card","Disability certificate","Income certificate"],
+    check:p=>{ if(!p.disability) return null;
+      return p.income<=1 ? result("eligible", ["Marked as person with disability","Income within range"])
+                          : result("partial", ["Marked as person with disability"], ["Confirm disability percentage meets the 80% threshold", stateNote(p,"income")]); }},
+  { id:"pmmvy", name:"PM Matru Vandana Yojana", dept:"Ministry of Women & Child Development", benefit:"₹5,000 cash benefit (first child)",
+    tag:"For pregnant & lactating mothers", docs:["Aadhaar card","MCP card","Bank passbook"],
+    check:p=>{ if(p.gender!=="Female"||!p.maternity) return null;
+      return result("eligible", ["Marked as pregnant / recent mother"]); }},
+  { id:"ayushman", name:"Ayushman Bharat (PM-JAY)", dept:"National Health Authority", benefit:"₹5 lakh/year health cover per family",
+    tag:"For low-income families", docs:["Aadhaar card","Ration card","SECC/family ID"],
+    check:p=>{ if(p.income>3) return null;
+      return p.income<=1 ? result("eligible", ["Household income within likely deprivation-criteria range"])
+                          : result("partial", [], ["Coverage depends on SECC deprivation category, not income alone — check your ration card status"]); }},
+  { id:"pmay", name:"Pradhan Mantri Awas Yojana", dept:"Ministry of Housing", benefit:"Housing subsidy up to ₹2.67 lakh",
+    tag:"For families without a pucca house", docs:["Aadhaar card","Income certificate","Land/property document"],
+    check:p=>{ if(!p.noPuccaHouse) return null;
+      return p.income<=8 ? result("eligible", ["No pucca house reported","Household income within eligible range"])
+                          : result("partial", ["No pucca house reported"], [stateNote(p,"income")]); }},
+  { id:"pmjjby", name:"PM Jeevan Jyoti Bima Yojana", dept:"Ministry of Finance / banks", benefit:"₹2 lakh life cover, ~₹436/year premium",
+    tag:"Age 18–50 with a bank account", docs:["Aadhaar card","Bank account","Auto-debit consent"],
+    check:p=>{ if(p.age<18||p.age>50) return null;
+      return p.bankAccount ? result("eligible", ["Age within 18–50","Has a bank account"])
+                            : result("partial", ["Age within 18–50"], ["Requires a bank account for the auto-debit premium"]); }},
+  { id:"pmsby", name:"PM Suraksha Bima Yojana", dept:"Ministry of Finance / banks", benefit:"₹2 lakh accident cover, ~₹20/year premium",
+    tag:"Age 18–70 with a bank account", docs:["Aadhaar card","Bank account","Auto-debit consent"],
+    check:p=>{ if(p.age<18||p.age>70) return null;
+      return p.bankAccount ? result("eligible", ["Age within 18–70","Has a bank account"])
+                            : result("partial", ["Age within 18–70"], ["Requires a bank account for the auto-debit premium"]); }},
+  { id:"apy", name:"Atal Pension Yojana", dept:"PFRDA", benefit:"Guaranteed pension ₹1,000–5,000/month after 60",
+    tag:"Unorganised-sector workers, age 18–40", docs:["Aadhaar card","Bank account"],
+    check:p=>{ if(p.age<18||p.age>40) return null;
+      if(p.occupation!=="Daily-wage / unorganised worker"&&p.occupation!=="Self-employed / artisan") return null;
+      return p.bankAccount ? result("eligible", ["Age within 18–40","Unorganised-sector occupation","Has a bank account"])
+                            : result("partial", ["Age within 18–40","Unorganised-sector occupation"], ["Requires a bank account to enrol"]); }},
+  { id:"eshram", name:"e-Shram Registration", dept:"Ministry of Labour", benefit:"Unorganised worker ID + accident cover ₹2 lakh",
+    tag:"Unorganised-sector workers, age 16–59", docs:["Aadhaar card","Bank account (optional)"],
+    check:p=>{ if(p.occupation!=="Daily-wage / unorganised worker") return null; if(p.age<16||p.age>59) return null;
+      return result("eligible", ["Age within 16–59","Occupation: unorganised worker"]); }},
+];
+
+/* ---------------- FORM STEPS ---------------- */
+const STEPS = ["basics","location","occupation","income","details"];
+let stepIndex = 0;
+
+function renderTicket(){
+  const strip = document.getElementById("ticket-strip");
+  strip.innerHTML = STEPS.map((s,i)=>`<div class="perf ${i<=stepIndex?'done':''}"></div>`).join("");
+  document.getElementById("step-label-text").innerText = `Step ${stepIndex+1} of ${STEPS.length}`;
+}
+
+function renderStep(){
+  renderTicket();
+  const c = document.getElementById("step-container");
+  const s = STEPS[stepIndex];
+  document.getElementById("step-name").innerText =
+    {basics:"About you", location:"Location", occupation:"Occupation", income:"Household income", details:"A few more details"}[s];
+
+  if(s==="basics"){
+    c.innerHTML = `<div class="card-panel">
+      <div class="q-title">Tell us about you</div>
+      <div class="q-sub">Just two quick facts to start.</div>
+      <div class="field" style="margin-bottom:16px;">
+        <label for="age-input">Your age</label>
+        <input type="number" id="age-input" min="1" max="110" placeholder="e.g. 34" value="${profile.age??''}">
+      </div>
+      <div class="field">
+        <label>Gender</label>
+        <div class="choice-grid">
+          ${["Male","Female","Other"].map(g=>`<button class="choice ${profile.gender===g?'selected':''}" onclick="setField('gender','${g}')">${g}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+    <div class="nav-row"><button class="btn-primary" onclick="nextStep()">Continue</button></div>`;
+  }
+  if(s==="location"){
+    c.innerHTML = `<div class="card-panel">
+      <div class="q-title">Where do you live?</div>
+      <div class="q-sub">Some schemes vary slightly by state.</div>
+      <div class="field">
+        <label for="state-select">State / UT</label>
+        <select id="state-select" onchange="setField('state', this.value)">
+          <option value="">Select your state</option>
+          ${STATES.map(s2=>`<option value="${s2}" ${profile.state===s2?'selected':''}>${s2}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    <div class="nav-row"><button class="btn-secondary" onclick="prevStep()">Back</button><button class="btn-primary" onclick="nextStep()">Continue</button></div>`;
+  }
+  if(s==="occupation"){
+    c.innerHTML = `<div class="card-panel">
+      <div class="q-title">What best describes you?</div>
+      <div class="q-sub">Pick the closest match.</div>
+      <div class="choice-grid">
+        ${OCCUPATIONS.map(o=>`<button class="choice ${profile.occupation===o?'selected':''}" onclick="setField('occupation','${o}')">${o}</button>`).join("")}
+      </div>
+    </div>
+    <div class="nav-row"><button class="btn-secondary" onclick="prevStep()">Back</button><button class="btn-primary" onclick="nextStep()">Continue</button></div>`;
+  }
+  if(s==="income"){
+    c.innerHTML = `<div class="card-panel">
+      <div class="q-title">Household income</div>
+      <div class="q-sub">A rough yearly range is fine.</div>
+      <div class="checklist">
+        ${INCOME_BANDS.map(b=>`<label class="check-row ${profile.income===b.val?'selected':''}" onclick="setIncome(${b.val})">
+          <input type="radio" name="income" ${profile.income===b.val?'checked':''}>
+          <span>${b.label}</span></label>`).join("")}
+      </div>
+    </div>
+    <div class="nav-row"><button class="btn-secondary" onclick="prevStep()">Back</button><button class="btn-primary" onclick="nextStep()">Continue</button></div>`;
+  }
+  if(s==="details"){
+    c.innerHTML = `<div class="card-panel">
+      <div class="q-title">A few more details</div>
+      <div class="q-sub">Check anything that applies to you.</div>
+      <div class="field" style="margin-bottom:16px;">
+        <label>Social category</label>
+        <select id="category-select" onchange="setField('category', this.value)">
+          <option value="">Select category</option>
+          ${["General","OBC","SC","ST","EWS"].map(cat=>`<option value="${cat}" ${profile.category===cat?'selected':''}>${cat}</option>`).join("")}
+        </select>
+      </div>
+      <div class="checklist">
+        ${checkRow('widow','I am a widow')}
+        ${profile.gender==='Female'?checkRow('maternity','I am pregnant or have a child under 1 year'):''}
+        ${checkRow('disability','I have a disability')}
+        ${checkRow('farmland','I own farmland')}
+        ${checkRow('bankAccount','I have a bank account')}
+        ${checkRow('noPuccaHouse',"I don't own a pucca (concrete) house")}
+      </div>
+    </div>
+    <div class="nav-row"><button class="btn-secondary" onclick="prevStep()">Back</button><button class="btn-primary" onclick="finishForm()">See my results</button></div>`;
+  }
+}
+
+function checkRow(field, label){
+  const on = profile[field];
+  return `<label class="check-row ${on?'selected':''}" onclick="toggleField('${field}')">
+    <input type="checkbox" ${on?'checked':''} onclick="event.stopPropagation()">
+    <span>${label}</span></label>`;
+}
+
+function setField(field, val){ profile[field]=val; renderStep(); }
+function setIncome(val){ profile.income = val; renderStep(); }
+function toggleField(field){ profile[field] = !profile[field]; renderStep(); }
+
+function nextStep(){
+  const s = STEPS[stepIndex];
+  if(s==="basics"){
+    const ageVal = parseInt(document.getElementById("age-input").value,10);
+    if(!ageVal || !profile.gender){ flash("Please enter your age and select a gender."); return; }
+    profile.age = ageVal;
+  }
+  if(s==="location" && !profile.state){ flash("Please select a state."); return; }
+  if(s==="occupation" && !profile.occupation){ flash("Please pick one option."); return; }
+  if(s==="income" && profile.income===null){ flash("Please select an income range."); return; }
+  stepIndex++;
+  renderStep();
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function prevStep(){ stepIndex=Math.max(0,stepIndex-1); renderStep(); window.scrollTo({top:0}); }
+function flash(msg){ alert(msg); }
+
+function finishForm(){
+  if(!profile.category){ flash("Please select a social category."); return; }
+  goTo('view-results');
+  window.scrollTo({top:0});
+  computeResults();
+}
+
+/* ---------------- MATCHING (API-first, offline fallback) ----------------
+   Tries the live backend (real rules engine + SQLite logging) with a short
+   timeout. If it doesn't respond in time — a realistic scenario on slow
+   mobile connections — falls back to the identical logic running locally,
+   so the citizen journey never stalls or breaks. */
+let matchedSchemes = [];
+let schemesMeta = {}; // id -> {name, dept, benefit, tag, docs} — loaded from backend when available
+
+async function fetchWithTimeout(url, options, ms){
+  const controller = new AbortController();
+  const t = setTimeout(()=>controller.abort(), ms);
+  try{ return await fetch(url, {...options, signal:controller.signal}); }
+  finally{ clearTimeout(t); }
+}
+
+async function loadSchemesMeta(){
+  try{
+    const res = await fetchWithTimeout('/api/schemes', {}, 2500);
+    if(!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    data.schemes.forEach(s=> schemesMeta[s.id] = s);
+  }catch(e){
+    LOCAL_SCHEMES.forEach(s=> schemesMeta[s.id] = {name:s.name, dept:s.dept, benefit:s.benefit, tag:s.tag, docs:s.docs});
+  }
+}
+loadSchemesMeta();
+
+async function computeResults(){
+  setModeIndicator("checking");
+  let matches, usedFallback = false;
+  try{
+    const res = await fetchWithTimeout('/api/match', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(profile)
+    }, 3000);
+    if(!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    matches = data.matches;
+  }catch(e){
+    usedFallback = true;
+    matches = [];
+    LOCAL_SCHEMES.forEach(sch=>{ const r = sch.check(profile); if(r) matches.push({id:sch.id, status:r.status, reasons:r.reasons}); });
+    matches.sort((a,b)=> (a.status==="eligible"?0:1) - (b.status==="eligible"?0:1));
+  }
+  setModeIndicator(usedFallback ? "offline" : "live");
+
+  matchedSchemes = matches.map(m => ({...m, ...(schemesMeta[m.id]||{})}));
+
+  const title = document.getElementById("results-title");
+  const amount = document.getElementById("results-amount");
+  const list = document.getElementById("results-list");
+
+  if(matchedSchemes.length===0){
+    title.innerText = "No strong matches found";
+    amount.innerText = "";
+    list.innerHTML = `<div class="no-match">We couldn't confidently match a scheme to these details. This demo checks 16 schemes — a full version would check the complete national + state scheme list.</div>`;
+    return;
+  }
+  const eligibleCount = matchedSchemes.filter(m=>m.status==="eligible").length;
+  title.innerText = `You may be eligible for ${matchedSchemes.length} scheme${matchedSchemes.length>1?'s':''}`;
+  amount.innerText = `${eligibleCount} strong match${eligibleCount!==1?'es':''} · ${matchedSchemes.length-eligibleCount} worth double-checking`;
+
+  list.innerHTML = matchedSchemes.map(m=>`
+    <div class="scheme-card">
+      <div class="stamp-badge ${m.status==='partial'?'partial':''}">
+        <b>${m.status==='eligible'?'ELIGIBLE':'PARTIAL'}</b><span>MATCH</span>
+      </div>
+      <h3>${m.name}</h3>
+      <div class="tag">${m.tag}</div>
+      <div class="benefit">${m.benefit}</div>
+      ${m.status==='partial' ? `<div style="font-size:12.5px; color:var(--turmeric-deep); margin-bottom:10px;">⚠ ${m.reasons.watch[0]}</div>` : ''}
+      <button class="link-btn" onclick="openSheet('${m.id}')">See details & how to apply →</button>
+    </div>
+  `).join("");
+}
+
+function setModeIndicator(mode){
+  let el = document.getElementById("mode-indicator");
+  if(!el){
+    el = document.createElement("div");
+    el.id = "mode-indicator";
+    el.style.cssText = "font-family:var(--mono);font-size:11.5px;padding:5px 10px;border-radius:20px;display:inline-block;margin-bottom:10px;";
+    document.querySelector("#view-results .results-head").appendChild(el);
+  }
+  if(mode==="checking"){ el.style.cssText+="background:#EEE;color:var(--slate);"; el.innerText="● checking your matches…"; }
+  if(mode==="live"){ el.style.cssText+="background:#E7F2EA;color:var(--relief);"; el.innerText="● live — backend database"; }
+  if(mode==="offline"){ el.style.cssText+="background:#FCF3E3;color:var(--turmeric-deep);"; el.innerText="● offline mode — using on-device matching"; }
+}
+
+/* ---------------- DETAIL SHEET ---------------- */
+function openSheet(id){
+  const m = matchedSchemes.find(x=>x.id===id);
+  const content = document.getElementById("sheet-content");
+  content.innerHTML = `
+    <h2>${m.name}</h2>
+    <div class="dept">${m.dept} · ${m.benefit}</div>
+    <div class="why-box">
+      <h4>What matches</h4>
+      <ul>${m.reasons.met.map(r=>`<li>${r}</li>`).join("")}</ul>
+    </div>
+    ${m.reasons.watch.length ? `<div class="why-box" style="border-color:var(--turmeric-deep);">
+      <h4 style="color:var(--turmeric-deep);">Worth double-checking</h4>
+      <ul>${m.reasons.watch.map(r=>`<li>${r}</li>`).join("")}</ul>
+    </div>` : ''}
+    <div class="why-box">
+      <h4>Documents you'll likely need</h4>
+      <ul class="doc-list" style="list-style:none; padding:0;">${m.docs.map(d=>`<li>${d}</li>`).join("")}</ul>
+    </div>
+    <div class="action-row">
+      <button class="btn-primary" style="flex:1;" onclick="mockApply('${m.id}')">Start application (demo)</button>
+    </div>
+    <button class="btn-wa" style="margin-top:10px; width:100%;" onclick="shareWA('${m.id}')">Share on WhatsApp</button>
+    <div class="confirm-box" id="confirm-${m.id}">
+      <div>✅ Demo request created.</div>
+      <div class="id">Reference: DEMO-${m.id.toUpperCase()}-${Math.floor(1000+Math.random()*9000)}</div>
+      <p style="font-size:13px; color:var(--slate); margin:8px 0 0;">In a real deployment, this would securely hand off to the department's official portal (e.g. the National Scholarship Portal, pmkisan.gov.in) — no data is submitted anywhere here.</p>
+    </div>
+  `;
+  document.getElementById("overlay").classList.add("active");
+}
+function closeSheet(){ document.getElementById("overlay").classList.remove("active"); }
+function mockApply(id){ document.getElementById(`confirm-${id}`).classList.add("active"); }
+function shareWA(id){
+  const m = matchedSchemes.find(x=>x.id===id);
+  const text = encodeURIComponent(`I checked "Am I Eligible?" and may qualify for ${m.name} (${m.benefit}). Sharing in case this helps you too — check your own matches here.`);
+  window.open(`https://wa.me/?text=${text}`, "_blank");
+}
+
+/* ---------------- NAV ---------------- */
+function goTo(id){
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+function restart(){
+  Object.keys(profile).forEach(k=>profile[k]= (typeof profile[k]==="boolean"?false:null));
+  stepIndex = 0;
+  goTo('view-form');
+  renderStep();
+  window.scrollTo({top:0});
+}
+</script>
+</body>
+</html>
