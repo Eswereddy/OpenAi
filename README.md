@@ -46,7 +46,7 @@ This repo deploys as-is to Render, Railway, or any Node host:
 **Real:** the full citizen journey, the rule-based matching engine, the
 database, the live/offline fallback, the WhatsApp share link.
 
-**Mocked:** the 16 schemes reflect publicly known, general eligibility
+**Mocked:** the 17 schemes reflect publicly known, general eligibility
 criteria — not a live government feed. "Start application" does not submit
 to any real system. No Aadhaar, OTP, or payment data is collected anywhere.
 
