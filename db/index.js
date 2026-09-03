@@ -26,11 +26,11 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS submissions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    age INTEGER,
+    age_band TEXT,
     gender TEXT,
     state TEXT,
     occupation TEXT,
-    income_band REAL,
+    income_band TEXT,
     category TEXT,
     matched_count INTEGER,
     matched_scheme_ids TEXT
@@ -49,6 +49,11 @@ for (const stmt of [
   "ALTER TABLE schemes ADD COLUMN source_note TEXT",
   "ALTER TABLE schemes ADD COLUMN last_verified TEXT",
   "ALTER TABLE schemes ADD COLUMN version INTEGER DEFAULT 1",
+  // Older DBs from before this fix stored an exact "age" and a raw
+  // (mislabeled) "income_band" value. This adds the real bucketed column;
+  // the pre-existing income_band column is reused as-is below — SQLite's
+  // type affinity happily stores text like "1L-2.5L" in a REAL column.
+  "ALTER TABLE submissions ADD COLUMN age_band TEXT",
 ]) {
   try { db.exec(stmt); } catch (_) { /* column already exists */ }
 }
@@ -122,20 +127,67 @@ function markSchemeVerified(id, { sourceAuthority, sourceNote, verifiedAt } = {}
   return db.prepare("SELECT id, source_authority AS sourceAuthority, source_note AS sourceNote, last_verified AS lastVerified, version FROM schemes WHERE id = ?").get(id);
 }
 
+// Buckets a profile down to coarse, non-identifying categories before
+// anything touches disk. The matching engine (schemes.js) still gets the
+// citizen's exact age/income — it needs precision to check real eligibility
+// ceilings like "income above ₹3.5 lakh". This function is only ever
+// applied to the copy that gets logged for analytics, never to the copy
+// used for matching.
+function ageBand(age) {
+  if (!Number.isFinite(age)) return null;
+  if (age < 18) return "<18";
+  if (age <= 25) return "18-25";
+  if (age <= 35) return "26-35";
+  if (age <= 45) return "36-45";
+  if (age <= 60) return "46-60";
+  return "60+";
+}
+
+function incomeBand(incomeLakhs) {
+  // profile.income arrives already converted to ₹ lakhs by the frontend,
+  // and is Infinity when the citizen didn't provide one — never 0.
+  if (!Number.isFinite(incomeLakhs)) return null;
+  if (incomeLakhs < 0.5) return "<50k";
+  if (incomeLakhs < 1) return "50k-1L";
+  if (incomeLakhs < 2.5) return "1L-2.5L";
+  if (incomeLakhs < 5) return "2.5L-5L";
+  if (incomeLakhs < 8) return "5L-8L";
+  return "8L+";
+}
+
 function logSubmission(profile, matches) {
   db.prepare(`
-    INSERT INTO submissions (age, gender, state, occupation, income_band, category, matched_count, matched_scheme_ids)
-    VALUES (@age, @gender, @state, @occupation, @income_band, @category, @matched_count, @matched_scheme_ids)
+    INSERT INTO submissions (age_band, gender, state, occupation, income_band, category, matched_count, matched_scheme_ids)
+    VALUES (@age_band, @gender, @state, @occupation, @income_band, @category, @matched_count, @matched_scheme_ids)
   `).run({
-    age: profile.age ?? null,
+    age_band: ageBand(profile.age),
     gender: profile.gender ?? null,
     state: profile.state ?? null,
     occupation: profile.occupation ?? null,
-    income_band: profile.income ?? null,
+    income_band: incomeBand(profile.income),
     category: profile.category ?? null,
     matched_count: matches.length,
     matched_scheme_ids: JSON.stringify(matches.map((m) => m.id)),
   });
+}
+
+// Data-minimisation: don't keep individual anonymous rows forever just
+// because storage is cheap. Aggregate stats (getStats, below) only need
+// counts, not indefinitely-retained rows — so periodically collapse rows
+// older than the retention window down to nothing, on the theory that
+// whatever insight they held has already been folded into earlier runs
+// of getStats() or would be by a real reporting job. A production
+// deployment would run this on a schedule (see server.js) rather than
+// rely on someone remembering to call it; it would probably also roll
+// purged rows into a monthly aggregate table instead of just deleting,
+// so month-over-month trend lines survive the purge. Out of scope for
+// this prototype, but this is the seam where that would plug in.
+const DEFAULT_RETENTION_DAYS = 180;
+function purgeOldSubmissions(retentionDays = DEFAULT_RETENTION_DAYS) {
+  const result = db
+    .prepare(`DELETE FROM submissions WHERE created_at < datetime('now', ?)`)
+    .run(`-${retentionDays} days`);
+  return result.changes;
 }
 
 function getStats() {
@@ -155,4 +207,4 @@ function getStats() {
   };
 }
 
-module.exports = { db, getAllSchemes, logSubmission, getStats, markSchemeVerified };
+module.exports = { db, getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions };
