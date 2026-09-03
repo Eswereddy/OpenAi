@@ -64,22 +64,25 @@ const SCHEMES = [
     tag: "For senior citizens below poverty line", docs: ["Aadhaar card", "Age proof", "BPL/income certificate"],
     check: p => {
       if (p.age < 60) return null;
-      return p.income <= 1 ? result("eligible", ["Age 60+", "Income within BPL-equivalent range"])
-                            : result("partial", ["Age 60+"], [stateNote(p, "income")]);
+      const poor = p.income <= 1 || p.hasBplCard;
+      return poor ? result("eligible", ["Age 60+", p.hasBplCard ? "BPL card holder" : "Income within BPL-equivalent range"])
+                  : result("partial", ["Age 60+"], [stateNote(p, "income")]);
     }},
   { id: "widow-pension", name: "Widow Pension Scheme", dept: "Ministry of Rural Development", benefit: "Monthly pension (state-administered)",
     tag: "For widows aged 40–79, low income", docs: ["Aadhaar card", "Husband's death certificate", "Income certificate"],
     check: p => {
       if (!p.widow || p.age < 40 || p.age > 79) return null;
-      return p.income <= 1 ? result("eligible", ["Marked as widow", "Age within 40–79 range"])
-                            : result("partial", ["Marked as widow", "Age within 40–79 range"], [stateNote(p, "income")]);
+      const poor = p.income <= 1 || p.hasBplCard;
+      return poor ? result("eligible", ["Marked as widow", "Age within 40–79 range"])
+                  : result("partial", ["Marked as widow", "Age within 40–79 range"], [stateNote(p, "income")]);
     }},
   { id: "disability-pension", name: "Disability Pension Scheme", dept: "Ministry of Rural Development", benefit: "Monthly pension (state-administered)",
     tag: "For persons with 80%+ disability, low income", docs: ["Aadhaar card", "Disability certificate", "Income certificate"],
     check: p => {
       if (!p.disability) return null;
-      return p.income <= 1 ? result("eligible", ["Marked as person with disability", "Income within range"])
-                            : result("partial", ["Marked as person with disability"], ["Confirm disability percentage meets the 80% threshold", stateNote(p, "income")]);
+      const poor = p.income <= 1 || p.hasBplCard;
+      return poor ? result("eligible", ["Marked as person with disability", p.hasBplCard ? "BPL card holder" : "Income within range"])
+                  : result("partial", ["Marked as person with disability"], ["Confirm disability percentage meets the 80% threshold", stateNote(p, "income")]);
     }},
   { id: "pmmvy", name: "PM Matru Vandana Yojana", dept: "Ministry of Women & Child Development", benefit: "₹5,000 cash benefit (first child)",
     tag: "For pregnant & lactating mothers", docs: ["Aadhaar card", "MCP card", "Bank passbook"],
@@ -90,8 +93,8 @@ const SCHEMES = [
   { id: "ayushman", name: "Ayushman Bharat (PM-JAY)", dept: "National Health Authority", benefit: "₹5 lakh/year health cover per family",
     tag: "For low-income families", docs: ["Aadhaar card", "Ration card", "SECC/family ID"],
     check: p => {
-      if (p.income > 3) return null;
-      return p.income <= 1 ? result("eligible", ["Household income within likely deprivation-criteria range"])
+      if (p.income > 3 && !p.hasBplCard) return null;
+      return (p.income <= 1 || p.hasBplCard) ? result("eligible", [p.hasBplCard ? "BPL card holder" : "Household income within likely deprivation-criteria range"])
                             : result("partial", [], ["Coverage depends on SECC deprivation category, not income alone — check your ration card status"]);
     }},
   { id: "pmay", name: "Pradhan Mantri Awas Yojana", dept: "Ministry of Housing", benefit: "Housing subsidy up to ₹2.67 lakh",
