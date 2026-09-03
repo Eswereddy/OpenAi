@@ -14,7 +14,9 @@ db.exec(`
     dept TEXT,
     benefit TEXT,
     tag TEXT,
-    docs TEXT
+    docs TEXT,
+    portal_name TEXT,
+    portal_url TEXT
   );
 
   CREATE TABLE IF NOT EXISTS submissions (
@@ -31,22 +33,41 @@ db.exec(`
   );
 `);
 
+// Migration for DB files created before portal_name/portal_url existed —
+// CREATE TABLE IF NOT EXISTS above won't add columns to an already-existing
+// table, so add them explicitly. Each is wrapped individually since SQLite
+// throws if the column is already there (no "IF NOT EXISTS" for ALTER TABLE
+// ADD COLUMN), and errors here are expected/harmless on a fresh DB.
+for (const stmt of [
+  "ALTER TABLE schemes ADD COLUMN portal_name TEXT",
+  "ALTER TABLE schemes ADD COLUMN portal_url TEXT",
+]) {
+  try { db.exec(stmt); } catch (_) { /* column already exists */ }
+}
+
 function seedSchemesIfEmpty() {
   const { c } = db.prepare("SELECT COUNT(*) AS c FROM schemes").get();
-  if (c > 0) return;
-  const insert = db.prepare(
-    "INSERT INTO schemes (id, name, dept, benefit, tag, docs) VALUES (@id, @name, @dept, @benefit, @tag, @docs)"
-  );
+  const insert = db.prepare(`
+    INSERT INTO schemes (id, name, dept, benefit, tag, docs, portal_name, portal_url)
+    VALUES (@id, @name, @dept, @benefit, @tag, @docs, @portalName, @portalUrl)
+    ON CONFLICT(id) DO UPDATE SET portal_name = excluded.portal_name, portal_url = excluded.portal_url
+  `);
   const insertMany = db.transaction((rows) => {
     for (const row of rows) insert.run({ ...row, docs: JSON.stringify(row.docs) });
   });
+  // Always run: on a fresh DB this inserts every scheme; on an existing DB
+  // (from before portal links existed) the ON CONFLICT clause backfills
+  // portal_name/portal_url onto rows that were seeded before this feature,
+  // without touching name/dept/benefit/etc that a real deployment might
+  // have since edited by hand.
   insertMany(SCHEME_METADATA);
+  void c;
 }
 seedSchemesIfEmpty();
 
 function getAllSchemes() {
   return db
-    .prepare("SELECT id, name, dept, benefit, tag, docs FROM schemes ORDER BY name")
+    .prepare("SELECT id, name, dept, benefit, tag, docs, portal_name AS portalName, portal_url AS portalUrl FROM schemes ORDER BY name")
     .all()
     .map((row) => ({ ...row, docs: JSON.parse(row.docs) }));
 }
