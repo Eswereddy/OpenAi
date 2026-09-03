@@ -135,7 +135,19 @@ const SCHEMES = [
     }},
 ];
 
-function matchProfile(profile) {
+function matchProfile(rawProfile) {
+  // Defense-in-depth: if income is missing, null, or not a valid number
+  // (blank form field, malformed API payload, etc.), never silently treat
+  // it as ₹0 — that would falsely mark someone ELIGIBLE for BPL-tied
+  // schemes just because they skipped a question. Infinity fails every
+  // "income <= X" check, so unknown income can only ever produce "partial"
+  // or "no match" — never a false ELIGIBLE — while BPL-card-based paths
+  // (which don't depend on income) still work normally.
+  const incomeNum = (rawProfile.income === null || rawProfile.income === undefined || rawProfile.income === "")
+    ? NaN
+    : Number(rawProfile.income);
+  const profile = { ...rawProfile, income: Number.isFinite(incomeNum) ? incomeNum : Infinity };
+
   const matches = [];
   for (const scheme of SCHEMES) {
     const r = scheme.check(profile);
