@@ -6,7 +6,7 @@
 const path = require("path");
 const express = require("express");
 const { matchProfile } = require("./schemes");
-const { getAllSchemes, logSubmission, getStats, markSchemeVerified } = require("./db");
+const { getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions } = require("./db");
 
 const app = express();
 app.use(express.json());
@@ -80,3 +80,18 @@ app.get("/healthz", (req, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Am I Eligible? backend running on port ${PORT}`));
+
+// Data-minimisation: run the retention purge on boot and once a day after
+// that, so anonymous submission rows don't accumulate indefinitely. A real
+// deployment would use a proper scheduled job (cron, a queue, etc.) instead
+// of an in-process timer that resets on every restart — this is enough to
+// demonstrate the retention policy actually runs, not a production scheduler.
+try {
+  const purged = purgeOldSubmissions();
+  if (purged) console.log(`Startup retention purge: removed ${purged} submission row(s) past the retention window.`);
+} catch (err) {
+  console.error("Startup retention purge failed:", err);
+}
+setInterval(() => {
+  try { purgeOldSubmissions(); } catch (err) { console.error("Scheduled retention purge failed:", err); }
+}, 24 * 60 * 60 * 1000);
