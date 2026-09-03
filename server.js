@@ -31,7 +31,12 @@ app.post("/api/match", (req, res) => {
   try {
     const profile = req.body || {};
     const matches = matchProfile(profile);
-    logSubmission(profile, matches);
+    // matches now includes "not_eligible" / "insufficient_info" entries too
+    // (so the citizen sees the full, honest picture) — but the stats table
+    // is meant to answer "how many schemes did this person likely qualify
+    // for", so only count the positive statuses there.
+    const positiveMatches = matches.filter(m => m.status === "eligible" || m.status === "needs_verification");
+    logSubmission(profile, positiveMatches);
     res.json({ matches });
   } catch (err) {
     console.error("POST /api/match failed:", err);
