@@ -137,9 +137,17 @@ const SCHEMES = [
     tag: "Meritorious students from low-income households", docs: ["Aadhaar card", "Income certificate", "Class 8 marksheet"],
     check: p => {
       if (p.occupation !== "Student") return null;
+      // NMMS is restricted to govt / govt-aided / local-body schools — a
+      // direct, explicit answer here (not a proxy) so a private-school
+      // student gets a real "not eligible", not a vague "needs verification".
+      if (p.institutionType === "private") {
+        return result("not_eligible", [], ["NMMS is only for students studying in government, government-aided, or local body schools — reported institution type is private."]);
+      }
       if (!incomeKnown(p)) return result("insufficient_info", [], ["Add your household income to check this scheme."]);
       if (p.income > 3.5) return result("not_eligible", [], ["Household income is above the ₹3.5 lakh national ceiling for this scholarship."]);
-      return result("needs_verification", ["Household income within the general limit"], ["The merit cut-off is exam-based and isn't assessed by this form."]);
+      const met = ["Household income within the general limit"];
+      if (p.classYear) met.push(`Reported class/year: ${p.classYear}`);
+      return result("needs_verification", met, ["The merit cut-off is exam-based and isn't assessed by this form; NMMS is specifically for Class 9–10 students — confirm your class matches."]);
     }},
   { id: "ignoaps", name: "Old Age Pension (IGNOAPS)", dept: "Ministry of Rural Development", benefit: "₹200–500+/month (state top-ups vary)",
     tag: "For senior citizens below poverty line", docs: ["Aadhaar card", "Age proof", "BPL/income certificate"],
@@ -157,8 +165,22 @@ const SCHEMES = [
     tag: "For persons with 80%+ disability, low income", docs: ["Aadhaar card", "Disability certificate", "Income certificate"],
     check: p => {
       if (!p.disability) return null;
-      const base = povertyLinkedResult(p, ["Marked as person with disability"]);
-      base.reasons.watch = [...base.reasons.watch, "Confirm your disability percentage meets the 80% threshold this scheme requires."];
+      // A reported disability percentage is a direct, explicit answer (not a
+      // proxy), so a clear under-80% figure can rule this out outright
+      // instead of only ever asking the person to "confirm" it themselves.
+      if (Number.isFinite(p.disabilityPercentage) && p.disabilityPercentage < 80) {
+        return result("not_eligible", ["Marked as person with disability"],
+          [`This scheme requires 80%+ disability; reported disability percentage (${p.disabilityPercentage}%) is below that threshold.`]);
+      }
+      const metSoFar = ["Marked as person with disability"];
+      if (Number.isFinite(p.disabilityPercentage) && p.disabilityPercentage >= 80) metSoFar.push("Disability percentage meets the 80%+ threshold");
+      if (p.disabilityCertificate) metSoFar.push("Has a disability certificate");
+      const base = povertyLinkedResult(p, metSoFar);
+      if (!Number.isFinite(p.disabilityPercentage)) {
+        base.reasons.watch = [...base.reasons.watch, "Confirm your disability percentage meets the 80% threshold this scheme requires."];
+      } else if (p.disabilityPercentage >= 80 && !p.disabilityCertificate) {
+        base.reasons.watch = [...base.reasons.watch, "You'll need an official disability certificate to prove this — apply at your district hospital if you don't have one."];
+      }
       return base;
     }},
   { id: "pmmvy", name: "PM Matru Vandana Yojana", dept: "Ministry of Women & Child Development", benefit: "₹5,000 cash benefit (first child)",
@@ -207,23 +229,44 @@ const SCHEMES = [
     tag: "Unorganised-sector workers, age 18–40", docs: ["Aadhaar card", "Bank account"],
     check: p => {
       if (p.age < 18 || p.age > 40) return null;
-      if (p.occupation !== "Daily-wage / unorganised worker" && p.occupation !== "Self-employed / artisan") return null;
+      if (!["Daily-wage / unorganised worker", "Self-employed / artisan", "Construction worker"].includes(p.occupation)) return null;
       return p.bankAccount ? result("eligible", ["Age within 18–40", "Unorganised-sector occupation", "Has a bank account"])
                             : result("not_eligible", ["Age within 18–40", "Unorganised-sector occupation"], ["Requires a bank account to enrol — open one and this requirement is met."]);
     }},
   { id: "eshram", name: "e-Shram Registration", dept: "Ministry of Labour", benefit: "Unorganised worker ID + accident cover ₹2 lakh",
     tag: "Unorganised-sector workers, age 16–59", docs: ["Aadhaar card", "Bank account (optional)"],
     check: p => {
-      if (p.occupation !== "Daily-wage / unorganised worker") return null;
+      if (!["Daily-wage / unorganised worker", "Construction worker"].includes(p.occupation)) return null;
       if (p.age < 16 || p.age > 59) return null;
       return result("eligible", ["Age within 16–59", "Occupation: unorganised worker"]);
+    }},
+  { id: "bocw-welfare", name: "Building & Other Construction Workers (BOCW) Welfare Scheme", dept: "State BOCW Welfare Board",
+    benefit: "Accident/medical assistance, pension, education & maternity benefits for registered workers",
+    tag: "For construction workers registered with the state welfare board",
+    docs: ["Aadhaar card", "Labour/registration card", "Proof of 90 days construction work in the year"],
+    check: p => {
+      if (p.occupation !== "Construction worker") return null;
+      // Registration status / labour-card possession is a direct credential
+      // check, unlike a self-reported income figure — a "yes" here is real
+      // evidence, so it can support "eligible" rather than only "worth checking".
+      if (p.registeredConstructionWorker === true || p.labourCardAvailable === true) {
+        return result("eligible",
+          ["Occupation: Construction worker", p.labourCardAvailable ? "Has a labour card" : "Registered with the BOCW welfare board"],
+          ["Specific benefit amounts and renewal rules vary by state welfare board — confirm at your state's labour department."]);
+      }
+      if (p.registeredConstructionWorker === false) {
+        return result("needs_verification", ["Occupation: Construction worker"],
+          ["You're not yet registered — construction workers who've done 90+ days of building work in the last year can register with the state BOCW welfare board (often via a labour office/CSC) to access these benefits."]);
+      }
+      return result("insufficient_info", ["Occupation: Construction worker"],
+        ["Let us know if you're registered with the state BOCW welfare board or have a labour card, to check this properly."]);
     }},
 ];
 
 // Order matches by how actionable/positive they are: strong matches first,
 // then things worth verifying, then "add more info", then clear misses last.
 const STATUS_ORDER = { eligible: 0, needs_verification: 1, insufficient_info: 2, not_eligible: 3 };
-
+ 
 function matchProfile(rawProfile) {
   // Defense-in-depth: if income is missing, null, or not a valid number
   // (blank form field, malformed API payload, etc.), never silently treat
@@ -238,7 +281,7 @@ function matchProfile(rawProfile) {
     ? NaN
     : Number(rawProfile.income);
   const profile = { ...rawProfile, income: Number.isFinite(incomeNum) ? incomeNum : Infinity };
-
+ 
   const matches = [];
   for (const scheme of SCHEMES) {
     const r = scheme.check(profile);
@@ -247,8 +290,9 @@ function matchProfile(rawProfile) {
   matches.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
   return matches;
 }
-
+ 
 // Metadata only (no functions) — this is what gets seeded into the database.
 const SCHEME_METADATA = SCHEMES.map(({ id, name, dept, benefit, tag, docs }) => ({ id, name, dept, benefit, tag, docs }));
-
+ 
 module.exports = { SCHEMES, SCHEME_METADATA, matchProfile, STATUS_ORDER };
+ 
