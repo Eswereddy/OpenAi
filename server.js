@@ -6,7 +6,7 @@
 const path = require("path");
 const express = require("express");
 const { matchProfile } = require("./schemes");
-const { getAllSchemes, logSubmission, getStats } = require("./db");
+const { getAllSchemes, logSubmission, getStats, markSchemeVerified } = require("./db");
 
 const app = express();
 app.use(express.json());
@@ -54,6 +54,25 @@ app.get("/api/stats", (req, res) => {
   } catch (err) {
     console.error("GET /api/stats failed:", err);
     res.status(500).json({ error: "Could not load stats." });
+  }
+});
+
+// POST /api/schemes/:id/verify — records that a human actually checked this
+// scheme's data against its official source (a notification, the scheme's
+// own portal, etc). This is deliberately a real action, not a data-entry
+// shortcut: it's how last_verified/version move forward, and it's the only
+// path that does — a re-seed from schemes.js never overwrites these once set
+// (see the ON CONFLICT clause in db/index.js). No auth layer here since this
+// demo has none at all, but a real deployment would restrict this to staff.
+app.post("/api/schemes/:id/verify", (req, res) => {
+  try {
+    const { sourceAuthority, sourceNote, verifiedAt } = req.body || {};
+    const updated = markSchemeVerified(req.params.id, { sourceAuthority, sourceNote, verifiedAt });
+    if (!updated) return res.status(404).json({ error: "Unknown scheme id." });
+    res.json({ scheme: updated });
+  } catch (err) {
+    console.error("POST /api/schemes/:id/verify failed:", err);
+    res.status(500).json({ error: "Could not record verification." });
   }
 });
 
