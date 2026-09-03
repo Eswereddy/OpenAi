@@ -16,7 +16,11 @@ db.exec(`
     tag TEXT,
     docs TEXT,
     portal_name TEXT,
-    portal_url TEXT
+    portal_url TEXT,
+    source_authority TEXT,
+    source_note TEXT,
+    last_verified TEXT,
+    version INTEGER DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS submissions (
@@ -41,6 +45,10 @@ db.exec(`
 for (const stmt of [
   "ALTER TABLE schemes ADD COLUMN portal_name TEXT",
   "ALTER TABLE schemes ADD COLUMN portal_url TEXT",
+  "ALTER TABLE schemes ADD COLUMN source_authority TEXT",
+  "ALTER TABLE schemes ADD COLUMN source_note TEXT",
+  "ALTER TABLE schemes ADD COLUMN last_verified TEXT",
+  "ALTER TABLE schemes ADD COLUMN version INTEGER DEFAULT 1",
 ]) {
   try { db.exec(stmt); } catch (_) { /* column already exists */ }
 }
@@ -48,9 +56,19 @@ for (const stmt of [
 function seedSchemesIfEmpty() {
   const { c } = db.prepare("SELECT COUNT(*) AS c FROM schemes").get();
   const insert = db.prepare(`
-    INSERT INTO schemes (id, name, dept, benefit, tag, docs, portal_name, portal_url)
-    VALUES (@id, @name, @dept, @benefit, @tag, @docs, @portalName, @portalUrl)
-    ON CONFLICT(id) DO UPDATE SET portal_name = excluded.portal_name, portal_url = excluded.portal_url
+    INSERT INTO schemes (id, name, dept, benefit, tag, docs, portal_name, portal_url, source_authority, source_note, last_verified, version)
+    VALUES (@id, @name, @dept, @benefit, @tag, @docs, @portalName, @portalUrl, @sourceAuthority, @sourceNote, @lastVerified, @version)
+    ON CONFLICT(id) DO UPDATE SET
+      portal_name      = excluded.portal_name,
+      portal_url       = excluded.portal_url,
+      -- Only backfill provenance fields when the row doesn't already have
+      -- them — a scheme that's been through markSchemeVerified() has real,
+      -- human-confirmed data that a code re-seed must never overwrite with
+      -- the static defaults from schemes.js.
+      source_authority = COALESCE(schemes.source_authority, excluded.source_authority),
+      source_note      = COALESCE(schemes.source_note, excluded.source_note),
+      last_verified     = COALESCE(schemes.last_verified, excluded.last_verified),
+      version           = COALESCE(schemes.version, excluded.version)
   `);
   const insertMany = db.transaction((rows) => {
     for (const row of rows) insert.run({ ...row, docs: JSON.stringify(row.docs) });
@@ -67,9 +85,41 @@ seedSchemesIfEmpty();
 
 function getAllSchemes() {
   return db
-    .prepare("SELECT id, name, dept, benefit, tag, docs, portal_name AS portalName, portal_url AS portalUrl FROM schemes ORDER BY name")
+    .prepare(`
+      SELECT id, name, dept, benefit, tag, docs,
+             portal_name AS portalName, portal_url AS portalUrl,
+             source_authority AS sourceAuthority, source_note AS sourceNote,
+             last_verified AS lastVerified, version
+      FROM schemes ORDER BY name
+    `)
     .all()
     .map((row) => ({ ...row, docs: JSON.parse(row.docs) }));
+}
+
+// Records a real, human-confirmed check against the official source — the
+// only legitimate way lastVerified/version should ever move forward. Never
+// call this from a code path that hasn't actually looked at the official
+// portal/notification; seeding defaults (above) deliberately never touch
+// last_verified once it's set, for the same reason.
+function markSchemeVerified(id, { sourceAuthority, sourceNote, verifiedAt } = {}) {
+  const existing = db.prepare("SELECT * FROM schemes WHERE id = ?").get(id);
+  if (!existing) return null;
+  const date = verifiedAt || new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  db.prepare(`
+    UPDATE schemes SET
+      source_authority = @sourceAuthority,
+      source_note = @sourceNote,
+      last_verified = @lastVerified,
+      version = @version
+    WHERE id = @id
+  `).run({
+    id,
+    sourceAuthority: sourceAuthority || existing.source_authority,
+    sourceNote: sourceNote || existing.source_note,
+    lastVerified: date,
+    version: (existing.version || 1) + 1,
+  });
+  return db.prepare("SELECT id, source_authority AS sourceAuthority, source_note AS sourceNote, last_verified AS lastVerified, version FROM schemes WHERE id = ?").get(id);
 }
 
 function logSubmission(profile, matches) {
@@ -105,4 +155,4 @@ function getStats() {
   };
 }
 
-module.exports = { db, getAllSchemes, logSubmission, getStats };
+module.exports = { db, getAllSchemes, logSubmission, getStats, markSchemeVerified };
