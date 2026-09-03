@@ -58,3 +58,61 @@ to any real system. No Aadhaar, OTP, or payment data is collected anywhere.
 - Add regional languages and an SMS/IVR fallback for feature-phone users.
 - Use the `submissions` table (already anonymised) to see which schemes are
   under-discovered by state or occupation, and prioritise outreach there.
+
+## Production architecture
+
+The hackathon build is a straight line — Frontend → Express → SQLite → rule
+engine — which is right for a 48-hour prototype but not how this would run
+at national scale. Two things would change: where scheme rules come from,
+and what happens when a user has no signal.
+
+**Getting rules from government sources to the user, safely:**
+
+```
+Official Government Sources
+         ↓
+  Scheme Data Pipeline
+         ↓
+ Validation / Review
+         ↓
+Versioned Scheme Rules
+         ↓
+User → Questionnaire → Eligibility Engine
+         ↓
+   Explainable Results
+      ↓           ↓
+ Documents    Official Portal
+```
+
+Today the seed data *is* the versioned rules — hand-curated once, from public
+sources. At scale that step becomes a pipeline: scheme data is pulled from
+myScheme and state portals, run through a validation/review stage (so a
+scraped change to, say, an income threshold can't silently reach citizens
+before a human confirms it), and only then published as a new *version* of
+the scheme rules the eligibility engine reads from. Versioning matters
+because eligibility rules change with budgets and policy — citizens who
+checked in March and citizens who check in July need to be able to see they
+got different (correct) answers, not a bug. The eligibility engine's output
+stays what it is today: an explainable match, plus a path to the actual
+documents needed and the official portal to apply — this app is a discovery
+layer in front of government systems, never a replacement for them.
+
+**Getting an answer to a user with no signal:**
+
+```
+User
+ ↓
+Local rule cache
+ ↓
+Offline eligibility engine
+```
+
+This is the fallback that already exists in `public/index.html` — the
+on-device logic that runs when the API call is slow or fails — described as
+its own path rather than an afterthought bolted onto the online one. The
+rules engine (`schemes.js`) is small and dependency-free specifically so it
+can ship to the client as a cached bundle and run identically offline; the
+"local rule cache" is just that bundle, refreshed opportunistically whenever
+the device does have connectivity, so a user on a poor connection is always
+evaluated against a recent version of the rules rather than being blocked
+until a request succeeds.
