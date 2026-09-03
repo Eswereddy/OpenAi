@@ -193,6 +193,7 @@ function purgeOldSubmissions(retentionDays = DEFAULT_RETENTION_DAYS) {
 function getStats() {
   const { total } = db.prepare("SELECT COUNT(*) AS total FROM submissions").get();
   const { avg } = db.prepare("SELECT AVG(matched_count) AS avg FROM submissions").get();
+  const { schemesIndexed } = db.prepare("SELECT COUNT(*) AS schemesIndexed FROM schemes").get();
   const byOccupation = db
     .prepare("SELECT occupation, COUNT(*) AS n FROM submissions WHERE occupation IS NOT NULL GROUP BY occupation ORDER BY n DESC LIMIT 5")
     .all();
@@ -201,7 +202,12 @@ function getStats() {
     .all();
   return {
     totalSubmissions: total,
-    avgMatchesPerCitizen: avg ? Math.round(avg * 10) / 10 : 0,
+    // null (not 0) when there's no data yet — 0 would claim "citizens average
+    // zero matches", which is a different (and misleading) statement from
+    // "we don't have enough submissions to compute this yet". The frontend
+    // renders null as "—" instead of a fabricated number.
+    avgMatchesPerCitizen: total > 0 && avg != null ? Math.round(avg * 10) / 10 : null,
+    schemesIndexed,
     byOccupation,
     topStates,
   };
