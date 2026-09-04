@@ -14,7 +14,7 @@ const { answerQuestion } = require("./chat-assistant");
 const { generateActionPlan } = require("./action-plan");
 const { generateChecklist } = require("./document-checklist");
 const { getCacheStats } = require("./ai-cache");
-const { activeProviderName } = require("./ai-provider");
+const { activeProviderName, providerChain, lastProviderUsed } = require("./ai-provider");
 
 // Minimal local-dev .env loader — no dependency added, matches this repo's
 // "as few dependencies as the task actually needs" style. Only fills in
@@ -258,7 +258,17 @@ app.post("/api/checklist", checklistLimiter, (req, res) => {
 // knew about.
 app.get("/api/stats", (req, res) => {
   try {
-    res.json({ ...getStats(), ...getCacheStats(), aiProvider: activeProviderName() });
+    res.json({
+      ...getStats(),
+      ...getCacheStats(),
+      aiProvider: activeProviderName(),
+      // Full Groq → OpenAI → Anthropic failover chain (only configured
+      // providers appear), plus which one actually served the last AI
+      // call and how many attempts it took — real evidence the automatic
+      // failover is wired up, not just which key happens to be set.
+      aiProviderChain: providerChain(),
+      aiLastProviderUsed: lastProviderUsed(),
+    });
   } catch (err) {
     console.error("GET /api/stats failed:", err);
     res.status(500).json({ error: "Could not load stats." });
