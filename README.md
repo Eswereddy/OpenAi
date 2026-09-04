@@ -26,15 +26,36 @@ rule-engine.js        Small generic interpreter that runs each scheme's
                       declarative population rules ({field, operator, value})
                       against a citizen's profile — adding scheme #18 means
                       adding data, not a new `if` branch.
+ai-provider.js         Shared client for the three supported AI providers
+                      (OpenAI / Anthropic / Groq — Groq is free, see below).
+                      Every other AI file calls into this one instead of
+                      talking to a provider directly.
 ai-summary.js          The AI layer. Turns the rule engine's already-decided
                       matches into one short, personalized, plain-language
-                      paragraph via Claude. Never decides eligibility itself
+                      paragraph via an LLM. Never decides eligibility itself
                       — it explains a verdict schemes.js already computed —
                       and degrades to a deterministic template if no API key
                       is set or the call fails, so the feature can never
                       block a citizen from seeing their results.
+chat-assistant.js      The AI chatbot. Answers open-ended questions
+                      ("what documents does PM-KISAN need?") grounded in
+                      this app's own scheme catalog. Never hands down a
+                      final eligibility verdict — that stays the rule
+                      engine's job.
+action-plan.js         The AI agent layer. Reasons across every match —
+                      including "not eligible" and "needs verification"
+                      ones — and turns the rule engine's own flagged
+                      follow-ups into a short, prioritized action plan.
+                      Degrades to a plain numbered list of those same
+                      follow-ups if no AI key is set.
+document-checklist.js  Consolidates and de-duplicates every matched
+                      scheme's required documents into one checklist, with
+                      a short "how to get it" tip per document (a built-in
+                      library for common documents; AI only fills gaps for
+                      uncommon ones).
 server.js            Express API: GET /api/schemes, POST /api/match,
-                      POST /api/summary, GET /api/stats,
+                      POST /api/summary, POST /api/chat, POST /api/action-plan,
+                      POST /api/checklist, GET /api/stats,
                       GET /api/schemes/:id/why, POST /api/schemes/:id/verify.
 test/smoke.js         Zero-dependency smoke test hitting every endpoint
                       against a real running server. `npm test`.
@@ -42,32 +63,60 @@ test/smoke.js         Zero-dependency smoke test hitting every endpoint
 
 ## AI integration
 
-Two independent AI touchpoints, both grounded in this app's own scheme data
-(never inventing schemes, benefits, or documents) and both degrading
-gracefully with no external call if unconfigured:
+Four AI touchpoints, all grounded in this app's own scheme data (never
+inventing schemes, benefits, or documents) and all degrading gracefully
+with no external call if unconfigured:
 
 **1. AI summary** — after a match, `POST /api/summary` turns the
 already-computed results into one short, personalized paragraph. See
 `ai-summary.js`.
 
 **2. AI chatbot** — a floating "Ask about schemes" widget (bottom-right on
-every page) answers open-ended questions — documents needed, who a scheme
-is for, how to apply — via `POST /api/chat`. It's explicitly instructed
-never to hand down a final eligibility verdict itself; that stays the rule
-engine's job. See `chat-assistant.js`.
+every page, with voice input) answers open-ended questions — documents
+needed, who a scheme is for, how to apply — via `POST /api/chat`. It's
+explicitly instructed never to hand down a final eligibility verdict
+itself; that stays the rule engine's job. See `chat-assistant.js`.
 
-Set `ANTHROPIC_API_KEY` as an environment variable to enable it:
+**3. AI action plan (agent)** — a "🧭 What should I do next?" button on the
+results page calls `POST /api/action-plan`, which reasons across *every*
+match (not just the successful ones) and returns a short, prioritized list
+of concrete next steps — confirm this, get that document, check that
+list — built only from what the rule engine already flagged as pending or
+missing. See `action-plan.js`.
+
+**4. Document checklist** — a "📋 Build my document checklist" button calls
+`POST /api/checklist`, which consolidates every matched scheme's document
+list into one de-duplicated checklist with a short "where to get it" tip
+per document, so a citizen matching 5+ schemes doesn't have to cross-check
+each scheme card by hand. See `document-checklist.js`.
+
+Set one of these environment variables to enable all four AI features at
+once (see `ai-provider.js` for priority order if more than one is set):
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+# or export OPENAI_API_KEY=sk-...
+# or export GROQ_API_KEY=gsk_...   ← free, no card required, see below
 npm start
 ```
 
-`ANTHROPIC_SUMMARY_MODEL` optionally overrides the model (defaults to
-`claude-sonnet-5`). With no key set, the endpoint still returns a real,
-useful summary — just a deterministic template built from the same match
-data instead of a generated one — so the app runs identically with or
-without it configured.
+### Get a free API key in under 2 minutes
+
+You don't need a paid OpenAI or Anthropic key to run this project.
+[Groq](https://console.groq.com/keys) issues a free API key — no credit
+card, generous free-tier rate limits, running fast open models (Llama
+3.3 by default). To use it:
+
+1. Go to https://console.groq.com/keys and sign in (Google/GitHub works).
+2. Click "Create API Key" and copy it.
+3. Copy `env.example.txt` to `.env` and paste it in as `GROQ_API_KEY`.
+4. `npm start` — all four AI features above now work end-to-end for free.
+
+`OPENAI_SUMMARY_MODEL` / `ANTHROPIC_SUMMARY_MODEL` / `GROQ_MODEL`
+optionally override each provider's model. With no key set at all, every
+AI endpoint still returns a real, useful result — just a deterministic
+template/consolidation built from the same match data instead of a
+generated one — so the app runs identically with or without AI configured.
 
 Why this split: the database holds *displayable* scheme content (name,
 benefit, documents) so it can be updated without a code deploy. The
@@ -97,8 +146,9 @@ commands automatically:
 ## What's real vs. mocked
 
 **Real:** the full citizen journey, the rule-based matching engine, the
-database, the live/offline fallback, the WhatsApp share link, and the AI
-summary layer (a real call to Claude when `ANTHROPIC_API_KEY` is set).
+database, the live/offline fallback, the WhatsApp share link, and all four
+AI layers (a real call to OpenAI/Anthropic/Groq when a key is set —
+summary, chatbot, action plan, and document checklist).
 
 **Mocked:** the schemes reflect publicly known, general eligibility
 criteria — not a live government feed. "Start application" does not submit
