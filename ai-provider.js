@@ -81,8 +81,10 @@ async function safeErrorDetail(res) {
 // Groq and OpenAI both speak the same OpenAI-compatible chat-completions
 // shape, so one function serves both — just a different URL, key, model,
 // and token-limit field name (Groq accepts the classic `max_tokens`; newer
-// OpenAI models want `max_completion_tokens`).
-async function callOpenAICompatible({ url, apiKey, model, system, messages, maxTokens, tokenField }) {
+// OpenAI models want `max_completion_tokens`). `extraBody` carries any
+// provider/model-specific fields (see callGroq below for why gpt-oss needs
+// some).
+async function callOpenAICompatible({ url, apiKey, model, system, messages, maxTokens, tokenField, extraBody }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -93,6 +95,7 @@ async function callOpenAICompatible({ url, apiKey, model, system, messages, maxT
         model,
         messages: system ? [{ role: "system", content: system }, ...messages] : messages,
         [tokenField]: maxTokens,
+        ...extraBody,
       }),
       signal: controller.signal,
     });
@@ -111,10 +114,35 @@ async function callOpenAICompatible({ url, apiKey, model, system, messages, maxT
   }
 }
 
+// gpt-oss models (openai/gpt-oss-20b, openai/gpt-oss-120b) are REASONING
+// models: before writing a visible answer they spend tokens on a hidden
+// chain-of-thought, and that comes out of the same max_tokens budget. This
+// app's prompts request short outputs (60-350 tokens) sized for a plain
+// instruct model — against gpt-oss, the hidden reasoning alone can burn the
+// entire budget and leave nothing for the actual answer, which surfaces
+// here as "empty response from model" even though the HTTP call succeeded.
+// Two fixes, both scoped to gpt-oss only so non-reasoning Groq models (or a
+// future GROQ_MODEL override) are unaffected:
+//   - reasoning_effort: "low"   — cuts hidden reasoning length (gpt-oss
+//     supports low/medium/high only, medium is the API default; "none" is
+//     not a valid value for this model family)
+//   - reasoning_format: "hidden" — keeps any reasoning tokens out of the
+//     `content` field entirely, so content is always just the final answer
+// Plus a floor under whatever max_tokens the caller asked for, since a
+// caller-requested 60-token budget (document-checklist's prompt) leaves
+// reasoning no room at all regardless of effort level.
+const GPT_OSS_MIN_TOKENS = 700;
+function isGptOss(model) {
+  return typeof model === "string" && model.includes("gpt-oss");
+}
+
 async function callGroq(system, messages, maxTokens) {
+  const usingGptOss = isGptOss(GROQ_MODEL);
   return callOpenAICompatible({
     url: GROQ_URL, apiKey: GROQ_API_KEY, model: GROQ_MODEL,
-    system, messages, maxTokens, tokenField: "max_tokens",
+    system, messages, tokenField: "max_tokens",
+    maxTokens: usingGptOss ? Math.max(maxTokens, GPT_OSS_MIN_TOKENS) : maxTokens,
+    extraBody: usingGptOss ? { reasoning_effort: "low", reasoning_format: "hidden" } : undefined,
   });
 }
 
