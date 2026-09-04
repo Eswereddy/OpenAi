@@ -5,17 +5,11 @@
 // is touched. Same "explains, never decides" boundary as ai-summary.js:
 // eligibility verdicts still come only from schemes.js / rule-engine.js.
 //
-// SECURITY: reuses the same OPENAI_API_KEY / ANTHROPIC_API_KEY env vars as
-// ai-summary.js. No key is ever hardcoded here.
+// Provider selection (OpenAI / Anthropic / Groq) and API keys live in
+// ai-provider.js — see that file (and README.md) for how to get a free
+// Groq key.
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_SUMMARY_MODEL || "gpt-5-mini";
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_SUMMARY_MODEL || "claude-sonnet-5";
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-
+const { generateText, hasProvider } = require("./ai-provider");
 const aiCache = require("./ai-cache");
 const CHAT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min — the quick-question chips send the exact same text repeatedly across visitors, so this is where caching pays off most
 
@@ -25,12 +19,14 @@ const MAX_MESSAGE_LEN = 500;
 // Builds a compact, plain-text version of the scheme catalog so the model
 // answers from the app's own real data instead of general knowledge — it
 // should never invent a scheme, benefit figure, or document requirement
-// that isn't in this list.
+// that isn't in this list. `docs` is the actual field name schemes carry
+// (see schemes.js / db/index.js) — using the right field here is what
+// keeps the chatbot's document answers grounded instead of empty.
 function buildCatalogContext(catalogById) {
   const schemes = Object.values(catalogById || {});
   if (!schemes.length) return "(No scheme catalog available.)";
   return schemes.slice(0, 20).map((s) => {
-    const docs = Array.isArray(s.documents) ? s.documents.join(", ") : (s.documents || "");
+    const docs = Array.isArray(s.docs) ? s.docs.join(", ") : (s.docs || "");
     return `- ${s.name}${s.benefit ? ` — benefit: ${s.benefit}` : ""}${s.dept ? ` — dept: ${s.dept}` : ""}${docs ? ` — docs: ${docs}` : ""}`;
   }).join("\n");
 }
@@ -62,61 +58,8 @@ function sanitizeHistory(history) {
     .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_MESSAGE_LEN) }));
 }
 
-async function callOpenAI(system, messages) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(OPENAI_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        messages: [{ role: "system", content: system }, ...messages],
-        max_completion_tokens: 220,
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`OpenAI API responded ${res.status}`);
-    const data = await res.json();
-    const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    if (!text || !text.trim()) throw new Error("Empty response from model");
-    return text.trim();
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function callAnthropic(system, messages) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 220,
-        system,
-        messages,
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Anthropic API responded ${res.status}`);
-    const data = await res.json();
-    const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
-    if (!text) throw new Error("Empty response from model");
-    return text;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function answerQuestion({ message, history, catalogById, language, matchedSchemeNames }) {
-  if (!OPENAI_API_KEY && !ANTHROPIC_API_KEY) {
+  if (!hasProvider()) {
     return {
       reply: language === "hi"
         ? "यह सहायक फ़िलहाल उपलब्ध नहीं है। कृपया ऊपर दिए गए फ़ॉर्म का उपयोग करें या \"क्यों?\" लिंक देखें।"
@@ -151,9 +94,7 @@ async function answerQuestion({ message, history, catalogById, language, matched
   }
 
   try {
-    const reply = OPENAI_API_KEY
-      ? await callOpenAI(system, messages)
-      : await callAnthropic(system, messages);
+    const reply = await generateText({ system, messages, maxTokens: 220 });
     if (cacheKey) aiCache.set(cacheKey, reply, CHAT_CACHE_TTL_MS);
     return { reply, source: "ai" };
   } catch (err) {
