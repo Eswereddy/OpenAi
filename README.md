@@ -2,8 +2,10 @@
 
 A prototype for the OpenAI Codex India hackathon. India runs 1,000+ welfare
 schemes; most eligible citizens never find out they qualify. This app takes
-five short answers and tells you which of 16 real, well-known schemes you
-likely qualify for — in plain language, with an explanation for every match.
+a short, occupation-aware questionnaire (a handful of core questions, plus a
+few extra ones only for farmers, students, or construction workers) and
+tells you which of 17 real, well-known schemes you likely qualify for — in
+plain language, with an explanation for every match.
 
 ## Architecture
 
@@ -16,8 +18,15 @@ schemes.js           The rules engine — scheme metadata + eligibility logic.
 db/index.js          SQLite setup — seeds scheme metadata into a real table,
                       and logs anonymised match summaries (no names, no ID
                       numbers, no phone numbers — ever).
+rule-engine.js        Small generic interpreter that runs each scheme's
+                      declarative population rules ({field, operator, value})
+                      against a citizen's profile — adding scheme #18 means
+                      adding data, not a new `if` branch.
 server.js            Express API: GET /api/schemes, POST /api/match,
-                      GET /api/stats.
+                      GET /api/stats, GET /api/schemes/:id/why,
+                      POST /api/schemes/:id/verify.
+test/smoke.js         Zero-dependency smoke test hitting every endpoint
+                      against a real running server. `npm test`.
 ```
 
 Why this split: the database holds *displayable* scheme content (name,
@@ -46,7 +55,7 @@ This repo deploys as-is to Render, Railway, or any Node host:
 **Real:** the full citizen journey, the rule-based matching engine, the
 database, the live/offline fallback, the WhatsApp share link.
 
-**Mocked:** the 17 schemes reflect publicly known, general eligibility
+**Mocked:** the schemes reflect publicly known, general eligibility
 criteria — not a live government feed. "Start application" does not submit
 to any real system. No Aadhaar, OTP, or payment data is collected anywhere.
 
