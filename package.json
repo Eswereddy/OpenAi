@@ -4,7 +4,8 @@
   "description": "Welfare scheme discovery prototype — Express + SQLite backend with a rule-based eligibility engine.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/smoke.js"
   },
   "engines": {
     "node": "20.x"
