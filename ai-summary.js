@@ -11,20 +11,11 @@
 // match data instead of a hard failure — same "still works with poor
 // connectivity" principle as the rest of this app, applied to the AI layer.
 //
-// SECURITY: API keys come ONLY from environment variables (OPENAI_API_KEY /
-// ANTHROPIC_API_KEY), set outside the codebase — in a local .env (gitignored)
-// or in your host's dashboard (Render → your service → Environment). Never
-// hardcode a key into this file or any other: this repo is public, and a key
-// committed to git history stays exposed even after you delete the line.
+// Provider selection (OpenAI / Anthropic / Groq) and API keys live in
+// ai-provider.js — see that file (and README.md) for how to get a free
+// Groq key.
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_SUMMARY_MODEL || "gpt-5-mini";
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_SUMMARY_MODEL || "claude-sonnet-5";
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-
+const { generateText, hasProvider } = require("./ai-provider");
 const aiCache = require("./ai-cache");
 const SUMMARY_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min — long enough to cover repeat clicks during a demo/judging pass, short enough that a scheme-data edit shows up the same session
 
@@ -89,72 +80,10 @@ function templateSummary(matchSummaries, language) {
     `the card below has the full details and how to apply.`;
 }
 
-async function callOpenAI(prompt) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(OPENAI_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        max_completion_tokens: 300,
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`OpenAI API responded ${res.status}`);
-    const data = await res.json();
-    const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    if (!text || !text.trim()) throw new Error("Empty response from model");
-    return text.trim();
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function callAnthropic(prompt) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 300,
-        messages: [{ role: "user", content: prompt }],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Anthropic API responded ${res.status}`);
-    const data = await res.json();
-    const text = (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join(" ")
-      .trim();
-    if (!text) throw new Error("Empty response from model");
-    return text;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function generateSummary({ profile, matches, catalogById, language }) {
   const matchSummaries = summarizeMatchesForPrompt(matches || [], catalogById || {});
 
-  // Prefer whichever provider has a key configured. OpenAI first since
-  // that's what's currently set up for this deployment; Anthropic works
-  // identically if that key is used instead.
-  if (!OPENAI_API_KEY && !ANTHROPIC_API_KEY) {
+  if (!hasProvider()) {
     return { summary: templateSummary(matchSummaries, language), source: "template" };
   }
 
@@ -170,7 +99,7 @@ async function generateSummary({ profile, matches, catalogById, language }) {
   if (cached) return { summary: cached, source: "ai-cached" };
 
   try {
-    const text = OPENAI_API_KEY ? await callOpenAI(prompt) : await callAnthropic(prompt);
+    const text = await generateText({ system: null, messages: [{ role: "user", content: prompt }], maxTokens: 300 });
     aiCache.set(cacheKey, text, SUMMARY_CACHE_TTL_MS);
     return { summary: text, source: "ai" };
   } catch (err) {
