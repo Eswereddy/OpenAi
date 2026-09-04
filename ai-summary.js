@@ -25,6 +25,9 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_SUMMARY_MODEL || "claude-sonnet-5";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
+const aiCache = require("./ai-cache");
+const SUMMARY_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min — long enough to cover repeat clicks during a demo/judging pass, short enough that a scheme-data edit shows up the same session
+
 // Trim a match list down to just what the prompt needs. Keeps the request
 // small and, more importantly, keeps the model from ever inventing a scheme
 // name, benefit figure, or reason that didn't come out of the rules engine.
@@ -156,8 +159,19 @@ async function generateSummary({ profile, matches, catalogById, language }) {
   }
 
   const prompt = buildPrompt(profile || {}, matchSummaries, language);
+
+  // Cache key: same profile line + same matched schemes/reasons + same
+  // language → same prompt → no reason to pay for and wait on a fresh
+  // call. Keying on the prompt itself (not raw profile) means the cache
+  // stays correct even if unrelated profile fields change without
+  // affecting what actually got sent to the model.
+  const cacheKey = "summary:" + prompt;
+  const cached = aiCache.get(cacheKey);
+  if (cached) return { summary: cached, source: "ai-cached" };
+
   try {
     const text = OPENAI_API_KEY ? await callOpenAI(prompt) : await callAnthropic(prompt);
+    aiCache.set(cacheKey, text, SUMMARY_CACHE_TTL_MS);
     return { summary: text, source: "ai" };
   } catch (err) {
     console.error("AI summary generation failed, using template fallback:", err.message);
