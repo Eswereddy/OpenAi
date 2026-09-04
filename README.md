@@ -26,12 +26,40 @@ rule-engine.js        Small generic interpreter that runs each scheme's
                       declarative population rules ({field, operator, value})
                       against a citizen's profile — adding scheme #18 means
                       adding data, not a new `if` branch.
+ai-summary.js          The AI layer. Turns the rule engine's already-decided
+                      matches into one short, personalized, plain-language
+                      paragraph via Claude. Never decides eligibility itself
+                      — it explains a verdict schemes.js already computed —
+                      and degrades to a deterministic template if no API key
+                      is set or the call fails, so the feature can never
+                      block a citizen from seeing their results.
 server.js            Express API: GET /api/schemes, POST /api/match,
-                      GET /api/stats, GET /api/schemes/:id/why,
-                      POST /api/schemes/:id/verify.
+                      POST /api/summary, GET /api/stats,
+                      GET /api/schemes/:id/why, POST /api/schemes/:id/verify.
 test/smoke.js         Zero-dependency smoke test hitting every endpoint
                       against a real running server. `npm test`.
 ```
+
+## AI integration
+
+After a match, the frontend calls `POST /api/summary` with the already-computed
+matches and gets back one short paragraph explaining, in plain language
+(English or Hindi, matching the page's language toggle), what the citizen
+likely qualifies for and what to do first. It renders as its own "AI
+Summary" panel above the results.
+
+Set `ANTHROPIC_API_KEY` as an environment variable to enable it:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+npm start
+```
+
+`ANTHROPIC_SUMMARY_MODEL` optionally overrides the model (defaults to
+`claude-sonnet-5`). With no key set, the endpoint still returns a real,
+useful summary — just a deterministic template built from the same match
+data instead of a generated one — so the app runs identically with or
+without it configured.
 
 Why this split: the database holds *displayable* scheme content (name,
 benefit, documents) so it can be updated without a code deploy. The
@@ -61,7 +89,8 @@ commands automatically:
 ## What's real vs. mocked
 
 **Real:** the full citizen journey, the rule-based matching engine, the
-database, the live/offline fallback, the WhatsApp share link.
+database, the live/offline fallback, the WhatsApp share link, and the AI
+summary layer (a real call to Claude when `ANTHROPIC_API_KEY` is set).
 
 **Mocked:** the schemes reflect publicly known, general eligibility
 criteria — not a live government feed. "Start application" does not submit
