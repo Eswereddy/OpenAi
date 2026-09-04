@@ -98,6 +98,25 @@ async function main() {
       !pension || pension.status !== "eligible"
     );
 
+    // Malformed JSON must return clean JSON, not an HTML page with a stack
+    // trace (a real information leak on a public API).
+    const badJsonRes = await fetch(`${BASE}/api/match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not valid json",
+    });
+    const badJsonBody = await badJsonRes.json().catch(() => null);
+    check("malformed JSON returns 400 with a JSON error body", badJsonRes.status === 400 && badJsonBody && typeof badJsonBody.error === "string");
+
+    // A negative age must be dropped back to "not provided", never passed
+    // through to the rules engine as a literal -5.
+    const negAgeRes = await fetch(`${BASE}/api/match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ age: -5, income: -100, occupation: "Farmer" }),
+    });
+    check("a negative age/income is accepted (sanitized) rather than erroring", negAgeRes.status === 200);
+
     // GET /api/stats — should reflect the two submissions just logged
     const statsRes = await fetch(`${BASE}/api/stats`);
     const statsBody = await statsRes.json();
