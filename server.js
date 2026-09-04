@@ -11,6 +11,7 @@ const { getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubm
 const { sanitizeProfile } = require("./validate");
 const { generateSummary } = require("./ai-summary");
 const { answerQuestion } = require("./chat-assistant");
+const { getCacheStats } = require("./ai-cache");
 
 // Minimal local-dev .env loader — no dependency added, matches this repo's
 // "as few dependencies as the task actually needs" style. Only fills in
@@ -196,7 +197,7 @@ app.post("/api/chat", chatLimiter, (req, res) => {
 // knew about.
 app.get("/api/stats", (req, res) => {
   try {
-    res.json(getStats());
+    res.json({ ...getStats(), ...getCacheStats() });
   } catch (err) {
     console.error("GET /api/stats failed:", err);
     res.status(500).json({ error: "Could not load stats." });
