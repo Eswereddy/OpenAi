@@ -32,7 +32,13 @@ function buildCatalogContext(catalogById) {
   }).join("\n");
 }
 
-function systemPrompt(catalogById, language) {
+function systemPrompt(catalogById, language, matchedSchemeNames) {
+  const personalLine = (Array.isArray(matchedSchemeNames) && matchedSchemeNames.length)
+    ? `\n\nThis citizen already ran the checker above and was matched to: ${matchedSchemeNames.join(", ")}. ` +
+      `If they ask something like "which should I do first" or "what's next", prioritize answering about ` +
+      `these specific matched schemes rather than the catalog in general — but you can still discuss any ` +
+      `other scheme below if they ask about it directly.`
+    : "";
   return `You are the help assistant embedded in "Am I Eligible?", an Indian government welfare-scheme discovery tool. ` +
     `Answer only questions about the schemes below, how the eligibility checker works, what documents are needed, or how to apply. ` +
     `Keep answers to 2-4 short sentences, plain language, no markdown. ` +
@@ -40,8 +46,9 @@ function systemPrompt(catalogById, language) {
     `if asked "am I eligible", tell them to use the form above and explain what it checks. ` +
     `Never invent a scheme, benefit amount, or document requirement that isn't in the list below. ` +
     `If a question is unrelated to this app or these schemes, politely say so and redirect to what you can help with. ` +
-    `Respond in ${language === "hi" ? "Hindi" : "English"}.\n\n` +
-    `Known schemes:\n${buildCatalogContext(catalogById)}`;
+    `Respond in ${language === "hi" ? "Hindi" : "English"}.` +
+    personalLine +
+    `\n\nKnown schemes:\n${buildCatalogContext(catalogById)}`;
 }
 
 function sanitizeHistory(history) {
@@ -105,7 +112,7 @@ async function callAnthropic(system, messages) {
   }
 }
 
-async function answerQuestion({ message, history, catalogById, language }) {
+async function answerQuestion({ message, history, catalogById, language, matchedSchemeNames }) {
   if (!OPENAI_API_KEY && !ANTHROPIC_API_KEY) {
     return {
       reply: language === "hi"
@@ -116,7 +123,13 @@ async function answerQuestion({ message, history, catalogById, language }) {
   }
   const trimmedMessage = String(message || "").slice(0, MAX_MESSAGE_LEN);
   const messages = [...sanitizeHistory(history), { role: "user", content: trimmedMessage }];
-  const system = systemPrompt(catalogById, language);
+  // Defensive: only pass through short, plain strings — this list goes
+  // straight into the system prompt, so it's sanitized the same way any
+  // other untrusted client input would be before reaching a model call.
+  const safeMatchedNames = Array.isArray(matchedSchemeNames)
+    ? matchedSchemeNames.filter((n) => typeof n === "string" && n.trim()).slice(0, 10).map((n) => n.slice(0, 80))
+    : [];
+  const system = systemPrompt(catalogById, language, safeMatchedNames);
   try {
     const reply = OPENAI_API_KEY
       ? await callOpenAI(system, messages)
