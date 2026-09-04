@@ -16,6 +16,9 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_SUMMARY_MODEL || "claude-sonnet-5";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
+const aiCache = require("./ai-cache");
+const CHAT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min — the quick-question chips send the exact same text repeatedly across visitors, so this is where caching pays off most
+
 const MAX_HISTORY_TURNS = 6; // trims a runaway client-side history to something sane
 const MAX_MESSAGE_LEN = 500;
 
@@ -130,10 +133,28 @@ async function answerQuestion({ message, history, catalogById, language, matched
     ? matchedSchemeNames.filter((n) => typeof n === "string" && n.trim()).slice(0, 10).map((n) => n.slice(0, 80))
     : [];
   const system = systemPrompt(catalogById, language, safeMatchedNames);
+
+  // Only cache fresh, first-turn questions — once there's real history the
+  // conversation is effectively unique, and caching a mid-conversation
+  // reply under the wrong prior context would risk a reply that doesn't
+  // fit. This is exactly the case the quick-question chips hit (first
+  // message, no history yet), which is also where repeat traffic is
+  // heaviest — nearly every visitor taps the same "What documents do I
+  // need?" chip.
+  const isFreshQuestion = !Array.isArray(history) || history.length === 0;
+  const cacheKey = isFreshQuestion
+    ? "chat:" + language + ":" + safeMatchedNames.slice().sort().join(",") + ":" + trimmedMessage.trim().toLowerCase()
+    : null;
+  if (cacheKey) {
+    const cached = aiCache.get(cacheKey);
+    if (cached) return { reply: cached, source: "ai-cached" };
+  }
+
   try {
     const reply = OPENAI_API_KEY
       ? await callOpenAI(system, messages)
       : await callAnthropic(system, messages);
+    if (cacheKey) aiCache.set(cacheKey, reply, CHAT_CACHE_TTL_MS);
     return { reply, source: "ai" };
   } catch (err) {
     console.error("Chat assistant failed:", err.message);
