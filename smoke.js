@@ -45,7 +45,7 @@ async function waitForServer(tries = 30) {
 async function main() {
   try { fs.unlinkSync(DB_PATH); } catch (_) { /* fine if it doesn't exist */ }
 
-  const server = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
+  const server = spawn(process.execPath, [path.join(__dirname, "server.js")], {
     env: { ...process.env, PORT: String(PORT), DB_PATH },
     stdio: "pipe",
   });
