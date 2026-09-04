@@ -133,6 +133,49 @@ async function main() {
     const whyMissingRes = await fetch(`${BASE}/api/schemes/not-a-real-scheme/why`);
     check("GET /api/schemes/<unknown>/why returns 404", whyMissingRes.status === 404);
 
+    // POST /api/action-plan — should return a plan (template fallback with
+    // no AI key configured in this test run) built from the farmer profile's
+    // own matches above, and never 500 regardless of provider config.
+    const planRes = await fetch(`${BASE}/api/action-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: { occupation: "Farmer", state: "Andhra Pradesh" }, matches: farmerBody.matches, language: "en" }),
+    });
+    const planBody = await planRes.json();
+    check("POST /api/action-plan returns 200", planRes.status === 200);
+    check("action-plan response includes a plan string", typeof planBody.plan === "string" && planBody.plan.length > 0);
+
+    // POST /api/checklist — consolidated document checklist for the same
+    // farmer matches; should always return an array (empty is valid too),
+    // never error.
+    const checklistRes = await fetch(`${BASE}/api/checklist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matches: farmerBody.matches, language: "en" }),
+    });
+    const checklistBody = await checklistRes.json();
+    check("POST /api/checklist returns 200", checklistRes.status === 200);
+    check("checklist response is an array", Array.isArray(checklistBody.checklist));
+    check(
+      "checklist consolidates a known farmer document (Aadhaar) with a tip",
+      checklistBody.checklist.some((c) => /aadhaar/i.test(c.document) && typeof c.tip === "string" && c.tip.length > 0)
+    );
+
+    // Malformed input (matches missing) on both new endpoints should be a
+    // clean 400, not a 500 — same boundary-validation standard as /api/match.
+    const planBadRes = await fetch(`${BASE}/api/action-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: {} }),
+    });
+    check("POST /api/action-plan without matches returns 400", planBadRes.status === 400);
+    const checklistBadRes = await fetch(`${BASE}/api/checklist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    check("POST /api/checklist without matches returns 400", checklistBadRes.status === 400);
+
     // POST /api/schemes/:id/verify — human-confirmed provenance update
     const verifyRes = await fetch(`${BASE}/api/schemes/pmkisan/verify`, {
       method: "POST",
