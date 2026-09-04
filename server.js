@@ -11,7 +11,10 @@ const { getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubm
 const { sanitizeProfile } = require("./validate");
 const { generateSummary } = require("./ai-summary");
 const { answerQuestion } = require("./chat-assistant");
+const { generateActionPlan } = require("./action-plan");
+const { generateChecklist } = require("./document-checklist");
 const { getCacheStats } = require("./ai-cache");
+const { activeProviderName } = require("./ai-provider");
 
 // Minimal local-dev .env loader — no dependency added, matches this repo's
 // "as few dependencies as the task actually needs" style. Only fills in
@@ -83,6 +86,8 @@ const verifyLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 // caps both cost and how hard the endpoint can be hammered.
 const summaryLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
+const actionPlanLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
+const checklistLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -191,13 +196,69 @@ app.post("/api/chat", chatLimiter, (req, res) => {
   })();
 });
 
+// POST /api/action-plan — the "AI agent" touchpoint. Distinct from
+// /api/summary (which only explains the current results): this reasons
+// across every match — including "not eligible" / "needs verification" /
+// "insufficient info" ones — and turns the rule engine's own flagged
+// follow-ups into a short, prioritized list of next actions. Never invents
+// a step; see action-plan.js for exactly how it's grounded.
+app.post("/api/action-plan", actionPlanLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { profile, matches, language } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { plan, source } = await generateActionPlan({
+        profile: sanitizeProfile(profile || {}),
+        matches,
+        catalogById,
+        language: language === "hi" ? "hi" : "en",
+      });
+      res.json({ plan, source });
+    } catch (err) {
+      console.error("POST /api/action-plan failed:", err);
+      res.status(500).json({ error: "Could not generate an action plan." });
+    }
+  })();
+});
+
+// POST /api/checklist — consolidates and de-duplicates the document lists
+// of every matched scheme into one checklist, with a short "how to get it"
+// tip per document. See document-checklist.js: document names and which
+// schemes need them come straight from the scheme catalog, never invented;
+// only the tip text for uncommon documents ever touches AI.
+app.post("/api/checklist", checklistLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { matches, language } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { checklist, source } = await generateChecklist({
+        matches,
+        catalogById,
+        language: language === "hi" ? "hi" : "en",
+      });
+      res.json({ checklist, source });
+    } catch (err) {
+      console.error("POST /api/checklist failed:", err);
+      res.status(500).json({ error: "Could not build a document checklist." });
+    }
+  })();
+});
+
 // GET /api/stats — aggregate, anonymised numbers only. This is the seed of
 // the "how would this work at scale" story: which occupations and states are
 // asking, and how many schemes people typically qualify for but likely never
 // knew about.
 app.get("/api/stats", (req, res) => {
   try {
-    res.json({ ...getStats(), ...getCacheStats() });
+    res.json({ ...getStats(), ...getCacheStats(), aiProvider: activeProviderName() });
   } catch (err) {
     console.error("GET /api/stats failed:", err);
     res.status(500).json({ error: "Could not load stats." });
