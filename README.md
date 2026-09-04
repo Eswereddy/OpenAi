@@ -27,8 +27,12 @@ rule-engine.js        Small generic interpreter that runs each scheme's
                       against a citizen's profile — adding scheme #18 means
                       adding data, not a new `if` branch.
 ai-provider.js         Shared client for the three supported AI providers
-                      (OpenAI / Anthropic / Groq — Groq is free, see below).
-                      Every other AI file calls into this one instead of
+                      (Groq / OpenAI / Anthropic — Groq is free and tried
+                      first, see below). If more than one key is set,
+                      failed/timed-out/rate-limited calls automatically
+                      retry on the next configured provider instead of
+                      falling straight to the template fallback. Every
+                      other AI file calls into this one instead of
                       talking to a provider directly.
 ai-summary.js          The AI layer. Turns the rule engine's already-decided
                       matches into one short, personalized, plain-language
@@ -91,21 +95,34 @@ per document, so a citizen matching 5+ schemes doesn't have to cross-check
 each scheme card by hand. See `document-checklist.js`.
 
 Set one of these environment variables to enable all four AI features at
-once (see `ai-provider.js` for priority order if more than one is set):
+once:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+export GROQ_API_KEY=gsk_...       # ← free, no card required, tried first
 # or export OPENAI_API_KEY=sk-...
-# or export GROQ_API_KEY=gsk_...   ← free, no card required, see below
+# or export ANTHROPIC_API_KEY=sk-ant-...
 npm start
 ```
+
+**Automatic failover:** you're not limited to one. Set two or all three and
+the app tries them in order — **Groq → OpenAI → Anthropic** — at runtime,
+per request. If Groq is unset, times out, hits a rate limit, or errors, the
+same call automatically retries on OpenAI, then Anthropic, before ever
+falling back to the deterministic template. This means a single provider
+outage or rate-limit spike no longer degrades the demo — it just quietly
+routes around it. `GET /api/stats` exposes `aiProvider` (the primary),
+`aiProviderChain` (the full configured order), and `aiLastProviderUsed`
+(which provider actually served the most recent call, and how many
+attempts it took) so the failover is visible, not just theoretical. See
+`ai-provider.js` for the exact retry logic.
 
 ### Get a free API key in under 2 minutes
 
 You don't need a paid OpenAI or Anthropic key to run this project.
 [Groq](https://console.groq.com/keys) issues a free API key — no credit
-card, generous free-tier rate limits, running fast open models (Llama
-3.3 by default). To use it:
+card, generous free-tier rate limits, running fast open models (GPT-OSS
+120B by default — Groq's recommended replacement for the now-decommissioned
+Llama 3.3 70B). To use it:
 
 1. Go to https://console.groq.com/keys and sign in (Google/GitHub works).
 2. Click "Create API Key" and copy it.
