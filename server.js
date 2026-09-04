@@ -10,6 +10,7 @@ const { matchProfile, explainScheme } = require("./schemes");
 const { getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions } = require("./db");
 const { sanitizeProfile } = require("./validate");
 const { generateSummary } = require("./ai-summary");
+const { answerQuestion } = require("./chat-assistant");
 
 // Minimal local-dev .env loader — no dependency added, matches this repo's
 // "as few dependencies as the task actually needs" style. Only fills in
@@ -80,6 +81,7 @@ const verifyLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 // Tighter than matchLimiter: each call may hit a paid external API, so this
 // caps both cost and how hard the endpoint can be hammered.
 const summaryLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
+const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -154,6 +156,35 @@ app.post("/api/summary", summaryLimiter, (req, res) => {
     } catch (err) {
       console.error("POST /api/summary failed:", err);
       res.status(500).json({ error: "Could not generate summary." });
+    }
+  })();
+});
+
+// POST /api/chat — the FAQ chatbot. A second, independent AI touchpoint
+// from /api/summary: this answers open-ended questions ("what documents do
+// I need for PM-KISAN?") grounded in the same scheme catalog, rather than
+// summarizing a specific match result. Never asked to give a final
+// eligibility verdict — see chat-assistant.js's system prompt — so it can
+// never contradict the rule engine's own answer.
+app.post("/api/chat", chatLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { message, history, language } = req.body || {};
+      if (typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "message is required." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { reply, source } = await answerQuestion({
+        message,
+        history,
+        catalogById,
+        language: language === "hi" ? "hi" : "en",
+      });
+      res.json({ reply, source });
+    } catch (err) {
+      console.error("POST /api/chat failed:", err);
+      res.status(500).json({ error: "Could not answer that right now." });
     }
   })();
 });
