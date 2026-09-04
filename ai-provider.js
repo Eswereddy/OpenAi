@@ -58,6 +58,26 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Pulls a short, safe diagnostic string out of a failed provider response —
+// the actual error message the provider sent back (e.g. "insufficient
+// quota", "model_decommissioned", "credit balance too low"), not just the
+// HTTP status code. This is what actually explains *why* a call failed, and
+// it's the difference between a log you can act on and one you can't.
+// Truncated and stripped of anything key-shaped as a defensive measure —
+// this only ever reaches server logs, never the end user.
+async function safeErrorDetail(res) {
+  try {
+    const body = await res.clone().json();
+    const msg = (body && body.error && (body.error.message || body.error.type)) || body.message;
+    if (typeof msg === "string" && msg.trim()) return msg.trim().slice(0, 200);
+  } catch (_) {
+    // Body wasn't JSON (or already consumed) — fall through to a plain
+    // status-only error rather than letting the diagnostic attempt itself
+    // become a second failure.
+  }
+  return null;
+}
+
 // Groq and OpenAI both speak the same OpenAI-compatible chat-completions
 // shape, so one function serves both — just a different URL, key, model,
 // and token-limit field name (Groq accepts the classic `max_tokens`; newer
@@ -77,7 +97,8 @@ async function callOpenAICompatible({ url, apiKey, model, system, messages, maxT
       signal: controller.signal,
     });
     if (!res.ok) {
-      const err = new Error(`responded ${res.status}`);
+      const detail = await safeErrorDetail(res);
+      const err = new Error(detail ? `responded ${res.status} — ${detail}` : `responded ${res.status}`);
       err.status = res.status;
       throw err;
     }
@@ -124,7 +145,8 @@ async function callAnthropic(system, messages, maxTokens) {
       signal: controller.signal,
     });
     if (!res.ok) {
-      const err = new Error(`responded ${res.status}`);
+      const detail = await safeErrorDetail(res);
+      const err = new Error(detail ? `responded ${res.status} — ${detail}` : `responded ${res.status}`);
       err.status = res.status;
       throw err;
     }
