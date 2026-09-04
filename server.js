@@ -4,10 +4,33 @@
 // auth needed because no personal or sensitive data is ever collected.
 
 const path = require("path");
+const fs = require("fs");
 const express = require("express");
 const { matchProfile, explainScheme } = require("./schemes");
 const { getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions } = require("./db");
 const { sanitizeProfile } = require("./validate");
+const { generateSummary } = require("./ai-summary");
+
+// Minimal local-dev .env loader — no dependency added, matches this repo's
+// "as few dependencies as the task actually needs" style. Only fills in
+// vars that AREN'T already set, so a real host's environment (Render, etc.)
+// always wins over a stray local .env file. Silently does nothing if there
+// is no .env — that's the normal case on a real deployment, where secrets
+// are set directly in the host's dashboard instead of a file.
+(function loadDotEnv() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, "utf8").split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+    if (key && !(key in process.env)) process.env[key] = value;
+  }
+})();
 
 const app = express();
 
@@ -54,6 +77,9 @@ function rateLimit({ windowMs, max }) {
 }
 const matchLimiter = rateLimit({ windowMs: 60 * 1000, max: 30 }); // 30 checks/min/IP is well above real usage
 const verifyLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
+// Tighter than matchLimiter: each call may hit a paid external API, so this
+// caps both cost and how hard the endpoint can be hammered.
+const summaryLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -98,6 +124,38 @@ app.post("/api/match", matchLimiter, (req, res) => {
     console.error("POST /api/match failed:", err);
     res.status(500).json({ error: "Could not compute matches." });
   }
+});
+
+// POST /api/summary — the AI layer. Takes the same profile + matches the
+// client already has (computed a moment ago by /api/match, or by the
+// on-device fallback engine) and returns one short, personalized,
+// plain-language paragraph explaining the results. Deliberately a separate,
+// optional call from /api/match: the rule engine's verdict is always
+// available and correct on its own; this only adds a friendlier explanation
+// on top, and degrades to a template (see ai-summary.js) if no API key is
+// configured or the model call fails, so it can never block a citizen from
+// seeing their results.
+app.post("/api/summary", summaryLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { profile, matches, language } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { summary, source } = await generateSummary({
+        profile: sanitizeProfile(profile || {}),
+        matches,
+        catalogById,
+        language: language === "hi" ? "hi" : "en",
+      });
+      res.json({ summary, source });
+    } catch (err) {
+      console.error("POST /api/summary failed:", err);
+      res.status(500).json({ error: "Could not generate summary." });
+    }
+  })();
 });
 
 // GET /api/stats — aggregate, anonymised numbers only. This is the seed of
