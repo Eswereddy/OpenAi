@@ -42,11 +42,19 @@ test/smoke.js         Zero-dependency smoke test hitting every endpoint
 
 ## AI integration
 
-After a match, the frontend calls `POST /api/summary` with the already-computed
-matches and gets back one short paragraph explaining, in plain language
-(English or Hindi, matching the page's language toggle), what the citizen
-likely qualifies for and what to do first. It renders as its own "AI
-Summary" panel above the results.
+Two independent AI touchpoints, both grounded in this app's own scheme data
+(never inventing schemes, benefits, or documents) and both degrading
+gracefully with no external call if unconfigured:
+
+**1. AI summary** — after a match, `POST /api/summary` turns the
+already-computed results into one short, personalized paragraph. See
+`ai-summary.js`.
+
+**2. AI chatbot** — a floating "Ask about schemes" widget (bottom-right on
+every page) answers open-ended questions — documents needed, who a scheme
+is for, how to apply — via `POST /api/chat`. It's explicitly instructed
+never to hand down a final eligibility verdict itself; that stays the rule
+engine's job. See `chat-assistant.js`.
 
 Set `ANTHROPIC_API_KEY` as an environment variable to enable it:
 
