@@ -7,10 +7,53 @@ const path = require("path");
 const express = require("express");
 const { matchProfile, explainScheme } = require("./schemes");
 const { getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions } = require("./db");
+const { sanitizeProfile } = require("./validate");
 
 const app = express();
-app.use(express.json());
+
+// A few security headers by hand rather than pulling in helmet for a
+// four-header prototype: disables MIME-sniffing, blocks this app from being
+// framed (clickjacking), and stops the default Express fingerprint header.
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+// 50kb is generous for this form's payload (a few dozen short fields) and
+// small enough that no one can use /api/match as a free multi-megabyte
+// upload endpoint. A body over the limit is rejected by body-parser with a
+// PayloadTooLargeError, caught by the JSON error handler below.
+app.use(express.json({ limit: "50kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+
+// Minimal in-memory rate limiting: a fixed window per IP, per route group.
+// No new dependency, no persistence — resets on restart, which is fine for
+// a prototype with no auth. This isn't meant to stop a determined attacker
+// (an in-memory, per-process counter can't, behind a load balancer or
+// multiple dynos), just to blunt accidental hammering (a buggy client stuck
+// in a retry loop) and naive scripted abuse of the two write-ish endpoints.
+function rateLimit({ windowMs, max }) {
+  const hits = new Map(); // ip -> { count, resetAt }
+  return (req, res, next) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const entry = hits.get(ip);
+    if (!entry || now > entry.resetAt) {
+      hits.set(ip, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    if (entry.count >= max) {
+      return res.status(429).json({ error: "Too many requests. Please slow down and try again shortly." });
+    }
+    entry.count++;
+    next();
+  };
+}
+const matchLimiter = rateLimit({ windowMs: 60 * 1000, max: 30 }); // 30 checks/min/IP is well above real usage
+const verifyLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -36,9 +79,13 @@ app.get("/api/schemes", (req, res) => {
 // no ID numbers — just coarse attributes) and returns which schemes match,
 // with an explanation for each. Also logs an anonymised summary so a real
 // deployment could see which schemes are most/least discovered by region.
-app.post("/api/match", (req, res) => {
+app.post("/api/match", matchLimiter, (req, res) => {
   try {
-    const profile = req.body || {};
+    // Sanitize at the boundary: drops out-of-range/malformed fields (a
+    // negative age, an income of -100, a multi-kilobyte "state" string)
+    // back to "not provided" rather than letting them reach the rules
+    // engine or the database. See validate.js for what this does and why.
+    const profile = sanitizeProfile(req.body);
     const matches = matchProfile(profile);
     // matches now includes "not_eligible" / "insufficient_info" entries too
     // (so the citizen sees the full, honest picture) — but the stats table
@@ -73,7 +120,7 @@ app.get("/api/stats", (req, res) => {
 // path that does — a re-seed from schemes.js never overwrites these once set
 // (see the ON CONFLICT clause in db/index.js). No auth layer here since this
 // demo has none at all, but a real deployment would restrict this to staff.
-app.post("/api/schemes/:id/verify", (req, res) => {
+app.post("/api/schemes/:id/verify", verifyLimiter, (req, res) => {
   try {
     const { sourceAuthority, sourceNote, sourceUrl, verifiedAt } = req.body || {};
     const updated = markSchemeVerified(req.params.id, { sourceAuthority, sourceNote, sourceUrl, verifiedAt });
@@ -113,6 +160,25 @@ app.get("/api/schemes/:id/why", (req, res) => {
 });
 
 app.get("/healthz", (req, res) => res.json({ ok: true }));
+
+// Catches body-parser failures (malformed JSON, a body over the 50kb limit)
+// and anything else thrown/next(err)'d in a route above. Express's own
+// default error handler would otherwise return an HTML page with a full
+// stack trace and file paths — fine for local debugging, a real information
+// leak on a public API. This always returns clean JSON instead, and never
+// forwards err.message for a 500 (only for the two well-understood 4xx
+// cases below, where the message is just "the request was malformed", not
+// anything about the server's internals).
+app.use((err, req, res, next) => {
+  if (err && err.type === "entity.too.large") {
+    return res.status(413).json({ error: "Request body too large." });
+  }
+  if (err instanceof SyntaxError && "body" in err) {
+    return res.status(400).json({ error: "Malformed JSON in request body." });
+  }
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Something went wrong on our end." });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Am I Eligible? backend running on port ${PORT}`));
