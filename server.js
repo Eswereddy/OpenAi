@@ -1,6 +1,6 @@
 // server.js
 // Thin Express API in front of the rules engine (schemes.js) and the SQLite
-// database (db/index.js). Kept deliberately simple: three endpoints, no
+// database (db/index.js). Kept deliberately simple: five endpoints, no
 // auth needed because no personal or sensitive data is ever collected.
 
 const path = require("path");
