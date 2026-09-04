@@ -15,6 +15,10 @@ public/index.html   Frontend — form, results, WhatsApp share. Calls the API
                      network is slow or unavailable (real concern on the
                      connections this is built for).
 schemes.js           The rules engine — scheme metadata + eligibility logic.
+validate.js           Input sanitization at the API boundary — drops
+                      out-of-range/malformed fields (negative age, a
+                      50,000-character string) back to "not provided"
+                      rather than letting them reach the rules engine.
 db/index.js          SQLite setup — seeds scheme metadata into a real table,
                       and logs anonymised match summaries (no names, no ID
                       numbers, no phone numbers — ever).
@@ -45,10 +49,14 @@ npm start
 
 ## Deploy
 
-This repo deploys as-is to Render, Railway, or any Node host:
+This repo deploys as-is to Render, Railway, or any Node host — `render.yaml`
+and `Procfile` are already in the repo, so most hosts pick up the build/start
+commands automatically:
 - Build command: `npm install`
 - Start command: `npm start`
-- No environment variables required for the demo.
+- Health check: `GET /healthz`
+- No environment variables required for the demo (`DB_PATH` and `PORT` are
+  optional overrides; both have sane defaults).
 
 ## What's real vs. mocked
 
