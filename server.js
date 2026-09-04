@@ -169,7 +169,7 @@ app.post("/api/summary", summaryLimiter, (req, res) => {
 app.post("/api/chat", chatLimiter, (req, res) => {
   (async () => {
     try {
-      const { message, history, language } = req.body || {};
+      const { message, history, language, matchedSchemeNames } = req.body || {};
       if (typeof message !== "string" || !message.trim()) {
         return res.status(400).json({ error: "message is required." });
       }
@@ -180,6 +180,7 @@ app.post("/api/chat", chatLimiter, (req, res) => {
         history,
         catalogById,
         language: language === "hi" ? "hi" : "en",
+        matchedSchemeNames,
       });
       res.json({ reply, source });
     } catch (err) {
