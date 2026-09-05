@@ -13,6 +13,7 @@ const { generateSummary } = require("./ai-summary");
 const { answerQuestion } = require("./chat-assistant");
 const { generateActionPlan } = require("./action-plan");
 const { generateChecklist } = require("./document-checklist");
+const { parseProfileFromText } = require("./profile-parser");
 const { getCacheStats } = require("./ai-cache");
 const { activeProviderName, providerChain, lastProviderUsed } = require("./ai-provider");
 
@@ -88,6 +89,7 @@ const summaryLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
 const actionPlanLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 const checklistLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
+const parseProfileLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -248,6 +250,33 @@ app.post("/api/checklist", checklistLimiter, (req, res) => {
     } catch (err) {
       console.error("POST /api/checklist failed:", err);
       res.status(500).json({ error: "Could not build a document checklist." });
+    }
+  })();
+});
+
+// POST /api/parse-profile — the "fill by talking" AI touchpoint. Takes one
+// free-form sentence (typed, or transcribed from voice on the client) and
+// returns a partial set of the SAME fields the form itself collects — never
+// a new field, never an eligibility verdict. The client only ever uses this
+// to pre-fill form inputs the citizen can still see, edit, and correct
+// before submitting; matchProfile() and the rest of the eligibility flow
+// are completely untouched by this endpoint. See profile-parser.js for the
+// exact extraction rules and the offline heuristic fallback.
+app.post("/api/parse-profile", parseProfileLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { text, language } = req.body || {};
+      if (typeof text !== "string" || !text.trim()) {
+        return res.status(400).json({ error: "text is required." });
+      }
+      const { fields, source } = await parseProfileFromText({
+        text,
+        language: language === "hi" ? "hi" : "en",
+      });
+      res.json({ fields, source });
+    } catch (err) {
+      console.error("POST /api/parse-profile failed:", err);
+      res.status(500).json({ error: "Could not read that just now — please fill the form in by hand." });
     }
   })();
 });
