@@ -258,6 +258,47 @@ async function main() {
     const verifyBody = await verifyRes.json();
     check("POST /api/schemes/pmkisan/verify returns 200", verifyRes.status === 200);
     check("verify bumps the version number", verifyBody.scheme && verifyBody.scheme.version >= 2);
+
+    // GET /api/impact — NEW FEATURE: homepage impact ticker
+    const impactRes = await fetch(`${BASE}/api/impact`);
+    const impactBody = await impactRes.json();
+    check("GET /api/impact returns 200", impactRes.status === 200);
+    check("impact response has citizensHelped/totalBenefitInr fields", typeof impactBody.citizensHelped === "number" && typeof impactBody.totalBenefitInr === "number");
+    check("impact reflects this run's submissions", impactBody.citizensHelped >= 1);
+
+    // POST /api/feedback — NEW FEATURE: feedback loop
+    const feedbackRes = await fetch(`${BASE}/api/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schemeId: "pmkisan", helpful: true, statusShown: "eligible" }),
+    });
+    check("POST /api/feedback returns 200", feedbackRes.status === 200);
+
+    const feedbackBadRes = await fetch(`${BASE}/api/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schemeId: "not-a-real-scheme", helpful: true }),
+    });
+    check("POST /api/feedback with unknown schemeId returns 400", feedbackBadRes.status === 400);
+
+    const feedbackMissingHelpfulRes = await fetch(`${BASE}/api/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schemeId: "pmkisan" }),
+    });
+    check("POST /api/feedback without helpful returns 400", feedbackMissingHelpfulRes.status === 400);
+
+    const feedbackStatsRes = await fetch(`${BASE}/api/feedback/stats`);
+    const feedbackStatsBody = await feedbackStatsRes.json();
+    check("GET /api/feedback/stats returns 200", feedbackStatsRes.status === 200);
+    const pmkisanFeedback = (feedbackStatsBody.feedback || []).find((f) => f.schemeId === "pmkisan");
+    check("feedback stats aggregate the pmkisan vote just recorded", !!pmkisanFeedback && pmkisanFeedback.total >= 1);
+
+    // GET /api/ping — NEW FEATURE: online/offline banner heartbeat
+    const pingRes = await fetch(`${BASE}/api/ping`);
+    const pingBody = await pingRes.json();
+    check("GET /api/ping returns 200", pingRes.status === 200);
+    check("ping response includes a timestamp", typeof pingBody.t === "number");
   } finally {
     server.kill();
     try { fs.unlinkSync(DB_PATH); } catch (_) { /* fine */ }
