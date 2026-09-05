@@ -47,8 +47,11 @@ const FIELD_SPEC = `{
   "hasBplCard": true, false, or null
 }`;
 
+const SPOKEN_LANGUAGE_NAME = { en: "English", hi: "Hindi", te: "Telugu" };
+
 function buildPrompt(text, language) {
-  return `A citizen is speaking to a government welfare-scheme eligibility form and describing themselves in their own words, instead of filling in each field by hand one at a time. Extract ONLY the fields they actually stated into this exact JSON shape (use null for anything not mentioned or genuinely ambiguous — never guess, infer, or invent a value that wasn't said):\n\n${FIELD_SPEC}\n\nRespond with ONLY the JSON object — no markdown code fences, no commentary, no explanation.\n\nWhat they said (may be in ${language === "hi" ? "Hindi" : "English"} or a mix of both, and may contain speech-recognition errors — use your best judgement but stay conservative): "${text.replace(/"/g, "'")}"`;
+  const langName = SPOKEN_LANGUAGE_NAME[language] || "English";
+  return `A citizen is speaking to a government welfare-scheme eligibility form and describing themselves in their own words, instead of filling in each field by hand one at a time. Extract ONLY the fields they actually stated into this exact JSON shape (use null for anything not mentioned or genuinely ambiguous — never guess, infer, or invent a value that wasn't said):\n\n${FIELD_SPEC}\n\nRespond with ONLY the JSON object — no markdown code fences, no commentary, no explanation.\n\nWhat they said (may be in ${langName} or a mix of English and ${langName}, and may contain speech-recognition errors — use your best judgement but stay conservative): "${text.replace(/"/g, "'")}"`;
 }
 
 function cleanNumber(v, { min = 0, max = Infinity } = {}) {
@@ -89,62 +92,64 @@ function heuristicParse(text) {
   const t = ` ${text.toLowerCase()} `;
   const out = {};
 
-  const ageMatch = t.match(/\b(\d{1,3})\s*(?:years?|yrs?|साल|वर्ष)\s*(?:old)?\b/) || t.match(/\bage\s*(?:is|:)?\s*(\d{1,3})\b/);
+  const ageMatch = t.match(/\b(\d{1,3})\s*(?:years?|yrs?|साल|वर्ष|సంవత్సరాలు|ఏళ్[ళల]ు?)(?:\s*old)?/) || t.match(/\bage\s*(?:is|:)?\s*(\d{1,3})\b/);
   if (ageMatch) { const n = Number(ageMatch[1]); if (n >= 0 && n <= 120) out.age = n; }
 
-  if (/\bfemale\b|\bwoman\b|\bwife\b|महिला|पत्नी/.test(t)) out.gender = "female";
-  else if (/\bmale\b|\bman\b|\bhusband\b|पुरुष|पति/.test(t)) out.gender = "male";
+  if (/\bfemale\b|\bwoman\b|\bwife\b|महिला|पत्नी|స్త్రీ|మహిళ|భార్య/.test(t)) out.gender = "female";
+  else if (/\bmale\b|\bman\b|\bhusband\b|पुरुष|पति|పురుషుడు|భర్త/.test(t)) out.gender = "male";
 
   for (const s of STATES) { if (t.includes(s.toLowerCase())) { out.state = s; break; } }
 
-  // Hindi state names for the few most commonly spoken ones — the AI path
-  // (when a key is configured) covers the rest; this is only the offline
-  // last resort, not the primary translation mechanism.
-  const HINDI_STATE_HINTS = {
+  // Hindi and Telugu state names for the few most commonly spoken ones —
+  // the AI path (when a key is configured) covers the rest; this is only
+  // the offline last resort, not the primary translation mechanism.
+  const REGIONAL_STATE_HINTS = {
     "आंध्र प्रदेश": "Andhra Pradesh", "तेलंगाना": "Telangana", "बिहार": "Bihar",
     "उत्तर प्रदेश": "Uttar Pradesh", "महाराष्ट्र": "Maharashtra", "राजस्थान": "Rajasthan",
     "मध्य प्रदेश": "Madhya Pradesh", "पंजाब": "Punjab", "गुजरात": "Gujarat",
     "कर्नाटक": "Karnataka", "तमिलनाडु": "Tamil Nadu", "केरल": "Kerala",
     "पश्चिम बंगाल": "West Bengal", "ओडिशा": "Odisha", "दिल्ली": "Delhi",
+    "ఆంధ్రప్రదేశ్": "Andhra Pradesh", "తెలంగాణ": "Telangana", "తమిళనాడు": "Tamil Nadu",
+    "కర్ణాటక": "Karnataka", "కేరళ": "Kerala", "ఒడిశా": "Odisha", "మహారాష్ట్ర": "Maharashtra",
   };
-  if (!out.state) { for (const hi in HINDI_STATE_HINTS) { if (t.includes(hi)) { out.state = HINDI_STATE_HINTS[hi]; break; } } }
+  if (!out.state) { for (const hint in REGIONAL_STATE_HINTS) { if (t.includes(hint)) { out.state = REGIONAL_STATE_HINTS[hint]; break; } } }
 
   const occMap = [
-    [/\bfarm(er|ing)\b|\bagricultur|किसान|खेती/, "farmer"],
-    [/\bstudent\b|\bstudying\b|\bcollege\b|\bschool\b|छात्र|विद्यार्थी/, "student"],
-    [/\bconstruction\b|\bmason\b|\bbuilding worker\b|निर्माण मजदूर|मिस्त्री/, "construction"],
-    [/\bunemployed\b|\bjobless\b|\blooking for (a )?job\b|बेरोज़गार|बेरोजगार/, "unemployed"],
-    [/\bself[- ]employed\b|\bown (shop|business)\b|\bsmall business\b|स्वरोजगार|छोटा व्यवसाय/, "self-employed"],
-    [/\bdaily[- ]wage\b|\bdaily wage labour|दिहाड़ी मजदूर/, "daily-wage"],
-    [/\bsalaried\b|\bprivate job\b|\bworking in a company\b|वेतनभोगी/, "salaried"],
-    [/\bhomemaker\b|\bhousewife\b|गृहिणी/, "homemaker"],
-    [/\bretired\b|\bpension(er)?\b|सेवानिवृत्त|पेंशनभोगी/, "retired"],
+    [/\bfarm(er|ing)\b|\bagricultur|किसान|खेती|రైతు|వ్యవసాయం/, "farmer"],
+    [/\bstudent\b|\bstudying\b|\bcollege\b|\bschool\b|छात्र|विद्यार्थी|విద్యార్థి|చదువుతున్న/, "student"],
+    [/\bconstruction\b|\bmason\b|\bbuilding worker\b|निर्माण मजदूर|मिस्त्री|నిర్మాణ కార్మికుడు|మేస్త్రి/, "construction"],
+    [/\bunemployed\b|\bjobless\b|\blooking for (a )?job\b|बेरोज़गार|बेरोजगार|నిరుద్యోగి|ఉద్యోగం లేదు/, "unemployed"],
+    [/\bself[- ]employed\b|\bown (shop|business)\b|\bsmall business\b|स्वरोजगार|छोटा व्यवसाय|స్వయం ఉపాధి|చిన్న వ్యాపారం/, "self-employed"],
+    [/\bdaily[- ]wage\b|\bdaily wage labour|दिहाड़ी मजदूर|రోజువారీ కూలీ|దినసరి కూలి/, "daily-wage"],
+    [/\bsalaried\b|\bprivate job\b|\bworking in a company\b|वेतनभोगी|జీతం ఉద్యోగి|ప్రైవేట్ ఉద్యోగం/, "salaried"],
+    [/\bhomemaker\b|\bhousewife\b|गृहिणी|గృహిణి/, "homemaker"],
+    [/\bretired\b|\bpension(er)?\b|सेवानिवृत्त|पेंशनभोगी|పదవీ విరమణ|పింఛనుదారు/, "retired"],
   ];
   for (const [re, val] of occMap) { if (re.test(t)) { out.occupation = val; break; } }
 
-  const incomeLakh = t.match(/([\d.]+)\s*lakh|([\d.]+)\s*लाख/);
-  const incomeMonthly = t.match(/(?:rs\.?|₹)?\s*([\d,]+)\s*(?:rupees)?\s*(?:per month|\/month|a month|monthly|महीना|माह)/);
-  const incomeRaw = t.match(/(?:income|earn(?:s|ing)?|आय)\s*(?:is|of|:)?\s*(?:rs\.?|₹)?\s*([\d,]+)/);
-  if (incomeLakh) out.income = Math.round(parseFloat(incomeLakh[1] || incomeLakh[2]) * 100000);
+  const incomeLakh = t.match(/([\d.]+)\s*lakh|([\d.]+)\s*लाख|([\d.]+)\s*లక్ష/);
+  const incomeMonthly = t.match(/(?:rs\.?|₹)?\s*([\d,]+)\s*(?:rupees)?\s*(?:per month|\/month|a month|monthly|महीना|माह|నెలకు|నెలవారీ)/);
+  const incomeRaw = t.match(/(?:income|earn(?:s|ing)?|आय|ఆదాయం)\s*(?:is|of|:)?\s*(?:rs\.?|₹)?\s*([\d,]+)/);
+  if (incomeLakh) out.income = Math.round(parseFloat(incomeLakh[1] || incomeLakh[2] || incomeLakh[3]) * 100000);
   else if (incomeMonthly) out.income = Math.round(parseFloat(incomeMonthly[1].replace(/,/g, "")) * 12);
   else if (incomeRaw) out.income = Math.round(parseFloat(incomeRaw[1].replace(/,/g, "")));
 
   for (const c of ["obc", "sc", "st", "ews"]) { if (new RegExp(`\\b${c}\\b`).test(t)) { out.category = c; break; } }
-  if (/\bminority\b|अल्पसंख्यक/.test(t)) out.category = "minority";
-  if (!out.category && /\bgeneral category\b|सामान्य वर्ग/.test(t)) out.category = "general";
+  if (/\bminority\b|अल्पसंख्यक|మైనారిటీ/.test(t)) out.category = "minority";
+  if (!out.category && /\bgeneral category\b|सामान्य वर्ग|జనరల్ కేటగిరీ/.test(t)) out.category = "general";
 
-  const landMatch = t.match(/([\d.]+)\s*acres?|([\d.]+)\s*एकड़/);
-  if (landMatch) out.landHolding = parseFloat(landMatch[1] || landMatch[2]);
+  const landMatch = t.match(/([\d.]+)\s*acres?|([\d.]+)\s*एकड़|([\d.]+)\s*ఎకరా/);
+  if (landMatch) out.landHolding = parseFloat(landMatch[1] || landMatch[2] || landMatch[3]);
 
-  if (/\bno bank account\b|\bdon'?t have a bank account\b|\bwithout a bank account\b|बैंक खाता नहीं/.test(t)) out.hasBankAccount = false;
-  else if (/\bbank account\b|बैंक खाता/.test(t)) out.hasBankAccount = true;
+  if (/\bno bank account\b|\bdon'?t have a bank account\b|\bwithout a bank account\b|बैंक खाता नहीं|బ్యాంకు ఖాతా లేదు/.test(t)) out.hasBankAccount = false;
+  else if (/\bbank account\b|बैंक खाता|బ్యాంకు ఖాతా/.test(t)) out.hasBankAccount = true;
 
-  if (/\bno pucca\b|\bkutcha house\b|\bdon'?t have a (pucca|concrete) house\b|पक्का घर नहीं/.test(t)) out.noPuccaHouse = true;
+  if (/\bno pucca\b|\bkutcha house\b|\bdon'?t have a (pucca|concrete) house\b|पक्का घर नहीं|పక్కా ఇల్లు లేదు/.test(t)) out.noPuccaHouse = true;
 
-  if (/\bdisab(led|ility)\b|\bdivyang\b|दिव्यांग|विकलांग/.test(t)) out.isDisabled = true;
-  if (/\bwidow\b|विधवा/.test(t)) out.isWidow = true;
-  if (/\bpregnant\b|\bmaternity\b|\bchild under (one|1) year\b|गर्भवती/.test(t)) out.isMaternity = true;
-  if (/\bbpl\b|\bration card\b|राशन कार्ड/.test(t)) out.hasBplCard = true;
+  if (/\bdisab(led|ility)\b|\bdivyang\b|दिव्यांग|विकलांग|దివ్యాంగ|వికలాంగ/.test(t)) out.isDisabled = true;
+  if (/\bwidow\b|विधवा|వితంతువు/.test(t)) out.isWidow = true;
+  if (/\bpregnant\b|\bmaternity\b|\bchild under (one|1) year\b|गर्भवती|గర్భవతి/.test(t)) out.isMaternity = true;
+  if (/\bbpl\b|\bration card\b|राशन कार्ड|రేషన్ కార్డు/.test(t)) out.hasBplCard = true;
 
   return out;
 }
@@ -158,7 +163,7 @@ async function parseProfileFromText({ text, language }) {
   }
 
   try {
-    const prompt = buildPrompt(trimmed, language === "hi" ? "hi" : "en");
+    const prompt = buildPrompt(trimmed, ["hi", "te"].includes(language) ? language : "en");
     const raw = await generateText({ system: null, messages: [{ role: "user", content: prompt }], maxTokens: 300 });
     const jsonStr = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
     const parsed = JSON.parse(jsonStr);
