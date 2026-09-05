@@ -258,6 +258,32 @@ pre-written sentence instead of the person's own words, and it auto-submits
 after the fields visibly fill in so the whole journey is visible without
 typing anything.
 
+## Latest additions
+
+Two features aimed at the two drop-off points the five AI touchpoints above
+don't cover — "I'll come back to this later" and "I'd rather talk to a
+person":
+
+**🔔 Remind me to follow up** — a "Remind me" link on every eligible /
+needs-verification scheme card downloads a real `.ics` calendar file
+(`GET /api/schemes/:id/reminder.ics`, see `reminder.js`) that any phone or
+desktop calendar app already knows how to import. Welfare schemes often need
+a citizen to come back later — before the next sowing season for crop
+insurance, before a new academic year for a scholarship, or just to check a
+pending verification — and that follow-up shouldn't depend on remembering a
+browser tab. Each scheme gets a sensible follow-up horizon based on its own
+real application cycle (documented in `reminder.js`), never a fabricated
+"deadline" — the event text always says this is a nudge, not an official
+date, and points back to the real portal to confirm it.
+
+**🏢 Find in-person help near you** — a button next to "Share on WhatsApp"
+for citizens who'd rather have someone else fill the form: a short panel
+explaining what a Common Service Centre (CSC) is and linking straight to the
+two real, official, national entry points (csc.gov.in and myScheme). Fully
+static and client-side — no new API call, no per-district directory this
+prototype can't keep current — and it says plainly that it can't look up an
+exact nearby address rather than inventing one.
+
 ## Run locally
 
 ```bash
