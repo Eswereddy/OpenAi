@@ -191,6 +191,57 @@ async function main() {
     check("parse-profile picks up state from free text", parseBody.fields && parseBody.fields.state === "Andhra Pradesh");
     check("parse-profile picks up occupation from free text", parseBody.fields && parseBody.fields.occupation === "farmer");
 
+    // Same heuristic path, but in Hindi and Telugu — regression test for the
+    // regional-language keyword coverage in profile-parser.js's
+    // heuristicParse(). Guards specifically against the "\b won't match a
+    // boundary between two non-Latin characters" class of bug (age regex
+    // silently matched nothing in either language until this was fixed).
+    const parseHiRes = await fetch(`${BASE}/api/parse-profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "मैं 34 साल का किसान हूं, आंध्र प्रदेश में, आय लगभग 1.2 लाख सालाना है", language: "hi" }),
+    });
+    const parseHiBody = await parseHiRes.json();
+    check("parse-profile (Hindi) picks up age", parseHiBody.fields && parseHiBody.fields.age === 34);
+    check("parse-profile (Hindi) picks up state", parseHiBody.fields && parseHiBody.fields.state === "Andhra Pradesh");
+    check("parse-profile (Hindi) picks up occupation", parseHiBody.fields && parseHiBody.fields.occupation === "farmer");
+    check("parse-profile (Hindi) picks up income", parseHiBody.fields && parseHiBody.fields.income === 120000);
+
+    const parseTeRes = await fetch(`${BASE}/api/parse-profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "నేను ఆంధ్రప్రదేశ్‌లో 34 ఏళ్ల రైతును, ఆదాయం సంవత్సరానికి 1.2 లక్షలు, నాకు 2 ఎకరాలు ఉన్నాయి", language: "te" }),
+    });
+    const parseTeBody = await parseTeRes.json();
+    check("parse-profile (Telugu) picks up age", parseTeBody.fields && parseTeBody.fields.age === 34);
+    check("parse-profile (Telugu) picks up state", parseTeBody.fields && parseTeBody.fields.state === "Andhra Pradesh");
+    check("parse-profile (Telugu) picks up occupation", parseTeBody.fields && parseTeBody.fields.occupation === "farmer");
+    check("parse-profile (Telugu) picks up landHolding", parseTeBody.fields && parseTeBody.fields.landHolding === 2);
+
+    // Template fallbacks (no AI key in this test env) must also produce
+    // real Telugu/Hindi text for the other four AI endpoints, not silently
+    // fall back to English because of an unrecognised language code.
+    const summaryTeRes = await fetch(`${BASE}/api/summary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profile: { occupation: "farmer", state: "Andhra Pradesh" },
+        matches: [{ id: "pmkisan", status: "eligible", reasons: { met: ["landholding farmer"] } }],
+        language: "te",
+      }),
+    });
+    const summaryTeBody = await summaryTeRes.json();
+    check("summary (Telugu) template is in Telugu script", /[\u0C00-\u0C7F]/.test(summaryTeBody.summary || ""));
+
+    const checklistTeRes = await fetch(`${BASE}/api/checklist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matches: [{ id: "pmkisan", status: "eligible" }], language: "te" }),
+    });
+    const checklistTeBody = await checklistTeRes.json();
+    const aadhaarTipTe = (checklistTeBody.checklist || []).find((it) => /aadhaar/i.test(it.document));
+    check("checklist (Telugu) Aadhaar tip is in Telugu script", !!aadhaarTipTe && /[\u0C00-\u0C7F]/.test(aadhaarTipTe.tip));
+
     const parseBadRes = await fetch(`${BASE}/api/parse-profile`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
