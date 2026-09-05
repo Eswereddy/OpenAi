@@ -14,8 +14,11 @@ user's actual pain point (typing through a long, unfamiliar government form
 on a slow phone) is attacked at the point where people actually drop off:
 before and during the form, not just after — a live per-scheme *and*
 rupee-value estimate as you type ("6 schemes look possible so far — up to
-₹1.8 lakh in benefits"), and now a way to skip the typing altogether by just
-describing yourself in one sentence.
+₹1.8 lakh in benefits"), a way to skip typing altogether by just describing
+yourself in one sentence, a "what if?" slider to feel how sensitive your
+result is to income, and a read-aloud option on every AI explanation for
+anyone who'd rather listen than read. See "How the AI touchpoints connect
+into one loop" below for how these chain together into a single journey.
 
 ## Architecture
 
@@ -171,6 +174,41 @@ benefit, documents) so it can be updated without a code deploy. The
 eligibility *rules* live in code, which is how most real eligibility engines
 are actually built — rules need version control and testing, not just rows
 in a table.
+
+### How the AI touchpoints connect into one loop
+
+These aren't five separate bolt-ons — they chain into a single citizen
+journey, each step handing off to the next:
+
+```
+Speak/type a sentence  →  AI extracts fields   →  Form is pre-filled
+   ("fill by talking")      (profile-parser.js)      (citizen reviews/edits)
+        ↓
+Live on-device count + ₹ estimate as the form is completed
+        ↓
+Submit  →  rule engine decides eligibility (never AI)
+        ↓
+AI summary explains the verdict in plain language  →  🔊 Read aloud
+        (ai-summary.js)                                 (same text, spoken —
+                                                          closes the loop with
+                                                          the voice input above)
+        ↓
+🔧 "What if?" income slider — instantly re-runs the same on-device rules
+   at a different income, no AI call needed, so the citizen can feel how
+   sensitive their result is before ever contacting a scheme office
+        ↓
+🧭 AI action plan + 📋 AI document checklist — also readable aloud
+        ↓
+Print / WhatsApp share
+```
+
+The two newest links — read-aloud and the income simulator — are
+deliberately NOT extra AI calls: read-aloud is the browser's own
+`SpeechSynthesis`, and the simulator re-runs the same dependency-free rule
+engine that already powers the offline fallback and the live preview. Both
+exist specifically to close gaps in the *user flow*, not to add AI for its
+own sake — an AI call it doesn't need would just be slower and less
+reliable than a browser API or a rule engine that's already sitting there.
 
 ## Run locally
 
