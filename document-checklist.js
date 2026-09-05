@@ -27,32 +27,33 @@ const TIP_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h — a document's "how to ge
 // name, since the same document appears with slightly different wording
 // across schemes ("Bank passbook" vs "Bank account (Aadhaar-seeded)").
 const TIP_LIBRARY = [
-  { match: /aadhaar/i, en: "Free. Apply or update at your nearest Aadhaar Seva Kendra, or online at uidai.gov.in.", hi: "निःशुल्क। नज़दीकी आधार सेवा केंद्र पर या uidai.gov.in पर आवेदन/अपडेट करें।" },
-  { match: /ration card|secc|family id/i, en: "Apply through your state's Public Distribution System (PDS) office or Common Service Centre (CSC).", hi: "अपने राज्य के खाद्य/PDS कार्यालय या कॉमन सर्विस सेंटर (CSC) से आवेदन करें।" },
-  { match: /income certificate|bpl/i, en: "Issued by your Tehsildar / Revenue office, or apply online via your state's e-district portal.", hi: "तहसीलदार/राजस्व कार्यालय से जारी होता है, या राज्य के ई-डिस्ट्रिक्ट पोर्टल से आवेदन करें।" },
-  { match: /caste|ews certificate/i, en: "Issued by your Tehsildar / Revenue office; carry proof of residence and community records.", hi: "तहसीलदार/राजस्व कार्यालय से जारी होता है; निवास प्रमाण और सामुदायिक रिकॉर्ड साथ रखें।" },
-  { match: /land record|khatauni|land ownership|land\/property/i, en: "Available at your local revenue/land records office, or your state's online land-records portal.", hi: "स्थानीय राजस्व/भू-अभिलेख कार्यालय या राज्य के ऑनलाइन भू-अभिलेख पोर्टल पर उपलब्ध।" },
-  { match: /bank (account|passbook)/i, en: "Open a zero-balance account (e.g. under PM Jan Dhan Yojana) at any nearby bank branch or business correspondent.", hi: "किसी भी नज़दीकी बैंक शाखा या बिज़नेस कॉरेस्पॉन्डेंट पर ज़ीरो-बैलेंस खाता (जैसे PM जन धन योजना के तहत) खोलें।" },
-  { match: /disability certificate|udid/i, en: "Issued after assessment at a government hospital / district medical board; apply via the UDID portal (swavlambancard.gov.in).", hi: "सरकारी अस्पताल/जिला मेडिकल बोर्ड में जांच के बाद जारी होता है; UDID पोर्टल (swavlambancard.gov.in) से आवेदन करें।" },
-  { match: /death certificate/i, en: "Issued by your local municipal body / gram panchayat that registered the death.", hi: "स्थानीय नगर निकाय/ग्राम पंचायत से जारी होता है जहाँ मृत्यु दर्ज हुई थी।" },
-  { match: /age proof/i, en: "Aadhaar card, birth certificate, or voter ID all work as age proof for most schemes.", hi: "अधिकांश योजनाओं के लिए आधार कार्ड, जन्म प्रमाण पत्र या वोटर आईडी उम्र के प्रमाण के रूप में मान्य हैं।" },
-  { match: /labour\/registration card|construction/i, en: "Register with your state's Building & Other Construction Workers (BOCW) Welfare Board — usually at the local labour office.", hi: "अपने राज्य के भवन एवं अन्य निर्माण कामगार (BOCW) कल्याण बोर्ड में पंजीकरण करें — आमतौर पर स्थानीय श्रम कार्यालय में।" },
-  { match: /school id|mark ?sheet|marksheet/i, en: "Available from your current or most recently attended school/institution.", hi: "अपने वर्तमान या पिछले स्कूल/संस्थान से प्राप्त करें।" },
-  { match: /mcp card/i, en: "Issued free at your local government hospital or Anganwadi centre when you register a pregnancy.", hi: "गर्भावस्था पंजीकरण के समय स्थानीय सरकारी अस्पताल या आंगनवाड़ी केंद्र में निःशुल्क जारी होता है।" },
-  { match: /sowing certificate/i, en: "Issued by your local Patwari / agriculture department after they record what you've sown that season.", hi: "पटवारी/कृषि विभाग द्वारा उस मौसम की बुवाई दर्ज करने के बाद जारी किया जाता है।" },
-  { match: /trade|craft/i, en: "A local trade body, ITI, or district industries centre can issue proof of your traditional trade.", hi: "स्थानीय व्यापार संस्था, आईटीआई या जिला उद्योग केंद्र आपके पारंपरिक व्यवसाय का प्रमाण जारी कर सकता है।" },
-  { match: /auto-debit consent/i, en: "Sign this at your bank branch when enrolling — it lets the small annual premium be deducted automatically.", hi: "नामांकन के समय अपनी बैंक शाखा में हस्ताक्षर करें — इससे वार्षिक प्रीमियम स्वतः कट जाता है।" },
+  { match: /aadhaar/i, en: "Free. Apply or update at your nearest Aadhaar Seva Kendra, or online at uidai.gov.in.", hi: "निःशुल्क। नज़दीकी आधार सेवा केंद्र पर या uidai.gov.in पर आवेदन/अपडेट करें।", te: "ఉచితం. మీ సమీప ఆధార్ సేవా కేంద్రంలో లేదా uidai.gov.in లో దరఖాస్తు/అప్‌డేట్ చేయండి." },
+  { match: /ration card|secc|family id/i, en: "Apply through your state's Public Distribution System (PDS) office or Common Service Centre (CSC).", hi: "अपने राज्य के खाद्य/PDS कार्यालय या कॉमन सर्विस सेंटर (CSC) से आवेदन करें।", te: "మీ రాష్ట్ర ప్రజా పంపిణీ వ్యవస్థ (PDS) కార్యాలయం లేదా కామన్ సర్వీస్ సెంటర్ (CSC) ద్వారా దరఖాస్తు చేయండి." },
+  { match: /income certificate|bpl/i, en: "Issued by your Tehsildar / Revenue office, or apply online via your state's e-district portal.", hi: "तहसीलदार/राजस्व कार्यालय से जारी होता है, या राज्य के ई-डिस्ट्रिक्ट पोर्टल से आवेदन करें।", te: "మీ తహసీల్దార్ / రెవెన్యూ కార్యాలయం జారీ చేస్తుంది, లేదా రాష్ట్ర e-district పోర్టల్ ద్వారా దరఖాస్తు చేయండి." },
+  { match: /caste|ews certificate/i, en: "Issued by your Tehsildar / Revenue office; carry proof of residence and community records.", hi: "तहसीलदार/राजस्व कार्यालय से जारी होता है; निवास प्रमाण और सामुदायिक रिकॉर्ड साथ रखें।", te: "తహసీల్దార్ / రెవెన్యూ కార్యాలయం జారీ చేస్తుంది; నివాస ధృవీకరణ, సంఘం రికార్డులు తీసుకెళ్లండి." },
+  { match: /land record|khatauni|land ownership|land\/property/i, en: "Available at your local revenue/land records office, or your state's online land-records portal.", hi: "स्थानीय राजस्व/भू-अभिलेख कार्यालय या राज्य के ऑनलाइन भू-अभिलेख पोर्टल पर उपलब्ध।", te: "స్థానిక రెవెన్యూ / భూ రికార్డుల కార్యాలయంలో లేదా రాష్ట్ర ఆన్‌లైన్ భూ రికార్డుల పోర్టల్‌లో లభిస్తుంది." },
+  { match: /bank (account|passbook)/i, en: "Open a zero-balance account (e.g. under PM Jan Dhan Yojana) at any nearby bank branch or business correspondent.", hi: "किसी भी नज़दीकी बैंक शाखा या बिज़नेस कॉरेस्पॉन्डेंट पर ज़ीरो-बैलेंस खाता (जैसे PM जन धन योजना के तहत) खोलें।", te: "ఏదైనా సమీప బ్యాంకు శాఖ లేదా బిజినెస్ కరస్పాండెంట్ వద్ద జీరో-బ్యాలెన్స్ ఖాతా (ఉదా. PM జన్ ధన్ యోజన కింద) తెరవండి." },
+  { match: /disability certificate|udid/i, en: "Issued after assessment at a government hospital / district medical board; apply via the UDID portal (swavlambancard.gov.in).", hi: "सरकारी अस्पताल/जिला मेडिकल बोर्ड में जांच के बाद जारी होता है; UDID पोर्टल (swavlambancard.gov.in) से आवेदन करें।", te: "ప్రభుత్వ ఆసుపత్రి / జిల్లా వైద్య బోర్డు పరీక్ష తర్వాత జారీ అవుతుంది; UDID పోర్టల్ (swavlambancard.gov.in) ద్వారా దరఖాస్తు చేయండి." },
+  { match: /death certificate/i, en: "Issued by your local municipal body / gram panchayat that registered the death.", hi: "स्थानीय नगर निकाय/ग्राम पंचायत से जारी होता है जहाँ मृत्यु दर्ज हुई थी।", te: "మరణాన్ని నమోదు చేసిన స్థానిక మునిసిపల్ సంస్థ / గ్రామ పంచాయతీ జారీ చేస్తుంది." },
+  { match: /age proof/i, en: "Aadhaar card, birth certificate, or voter ID all work as age proof for most schemes.", hi: "अधिकांश योजनाओं के लिए आधार कार्ड, जन्म प्रमाण पत्र या वोटर आईडी उम्र के प्रमाण के रूप में मान्य हैं।", te: "చాలా పథకాలకు ఆధార్ కార్డు, జనన ధృవీకరణ పత్రం లేదా ఓటర్ ఐడీ వయస్సు రుజువుగా చెల్లుతాయి." },
+  { match: /labour\/registration card|construction/i, en: "Register with your state's Building & Other Construction Workers (BOCW) Welfare Board — usually at the local labour office.", hi: "अपने राज्य के भवन एवं अन्य निर्माण कामगार (BOCW) कल्याण बोर्ड में पंजीकरण करें — आमतौर पर स्थानीय श्रम कार्यालय में।", te: "మీ రాష్ట్ర భవన & ఇతర నిర్మాణ కార్మికుల (BOCW) సంక్షేమ బోర్డులో నమోదు చేసుకోండి — సాధారణంగా స్థానిక కార్మిక కార్యాలయంలో." },
+  { match: /school id|mark ?sheet|marksheet/i, en: "Available from your current or most recently attended school/institution.", hi: "अपने वर्तमान या पिछले स्कूल/संस्थान से प्राप्त करें।", te: "మీరు ప్రస్తుతం లేదా ఇటీవల చదివిన పాఠశాల / సంస్థ నుండి పొందవచ్చు." },
+  { match: /mcp card/i, en: "Issued free at your local government hospital or Anganwadi centre when you register a pregnancy.", hi: "गर्भावस्था पंजीकरण के समय स्थानीय सरकारी अस्पताल या आंगनवाड़ी केंद्र में निःशुल्क जारी होता है।", te: "గర్భం నమోదు చేసుకున్నప్పుడు స్థానిక ప్రభుత్వ ఆసుపత్రి లేదా అంగన్‌వాడీ కేంద్రంలో ఉచితంగా జారీ చేస్తారు." },
+  { match: /sowing certificate/i, en: "Issued by your local Patwari / agriculture department after they record what you've sown that season.", hi: "पटवारी/कृषि विभाग द्वारा उस मौसम की बुवाई दर्ज करने के बाद जारी किया जाता है।", te: "ఆ సీజన్‌లో మీరు వేసిన పంటను నమోదు చేసిన తర్వాత స్థానిక పట్వారీ / వ్యవసాయ శాఖ జారీ చేస్తుంది." },
+  { match: /trade|craft/i, en: "A local trade body, ITI, or district industries centre can issue proof of your traditional trade.", hi: "स्थानीय व्यापार संस्था, आईटीआई या जिला उद्योग केंद्र आपके पारंपरिक व्यवसाय का प्रमाण जारी कर सकता है।", te: "స్థానిక వ్యాపార సంఘం, ITI లేదా జిల్లా పరిశ్రమల కేంద్రం మీ సాంప్రదాయ వృత్తికి రుజువు జారీ చేయగలదు." },
+  { match: /auto-debit consent/i, en: "Sign this at your bank branch when enrolling — it lets the small annual premium be deducted automatically.", hi: "नामांकन के समय अपनी बैंक शाखा में हस्ताक्षर करें — इससे वार्षिक प्रीमियम स्वतः कट जाता है।", te: "నమోదు చేసుకునేటప్పుడు మీ బ్యాంకు శాఖలో సంతకం చేయండి — దీనివల్ల చిన్న వార్షిక ప్రీమియం స్వయంచాలకంగా తీసివేయబడుతుంది." },
 ];
 
 const GENERIC_TIP = {
   en: "Check with your local Common Service Centre (CSC), e-mitra kiosk, or the scheme's official portal for how to obtain this.",
   hi: "इसे प्राप्त करने के तरीके के लिए अपने नज़दीकी कॉमन सर्विस सेंटर (CSC), ई-मित्र कियोस्क या योजना के आधिकारिक पोर्टल से संपर्क करें।",
+  te: "దీన్ని పొందే విధానం కోసం మీ సమీప కామన్ సర్వీస్ సెంటర్ (CSC), e-mitra కియోస్క్ లేదా పథకం అధికారిక పోర్టల్‌ను సంప్రదించండి.",
 };
 
 function libraryTip(docName, language) {
   const entry = TIP_LIBRARY.find((t) => t.match.test(docName));
   if (!entry) return null;
-  return language === "hi" ? entry.hi : entry.en;
+  return entry[language] || entry.en;
 }
 
 // Builds the consolidated, deduplicated document -> schemes map straight
@@ -93,7 +94,7 @@ async function tipFor(docName, language) {
     `where an Indian citizen would typically obtain or apply for this document: "${docName}". ` +
     `If you are not confident about a specific, correct process, just say to check with the local Common Service Centre ` +
     `or the relevant government office — never invent a specific portal name or fee you are not sure of. ` +
-    `Respond in ${language === "hi" ? "Hindi" : "English"}.`;
+    `Respond in ${{ hi: "Hindi", te: "Telugu" }[language] || "English"}.`;
 
   try {
     const text = await generateText({ system: null, messages: [{ role: "user", content: prompt }], maxTokens: 60 });
