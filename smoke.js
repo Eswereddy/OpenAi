@@ -176,6 +176,28 @@ async function main() {
     });
     check("POST /api/checklist without matches returns 400", checklistBadRes.status === 400);
 
+    // POST /api/parse-profile — "fill by talking". No AI key is set in this
+    // test environment, so this exercises the dependency-free heuristic
+    // fallback path (see profile-parser.js) rather than a live model call —
+    // still enough to catch "the endpoint doesn't start" or "always 500s".
+    const parseRes = await fetch(`${BASE}/api/parse-profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "I am a 34 year old farmer in Andhra Pradesh with 2 acres and a bank account", language: "en" }),
+    });
+    const parseBody = await parseRes.json();
+    check("POST /api/parse-profile returns 200", parseRes.status === 200);
+    check("parse-profile picks up age from free text", parseBody.fields && parseBody.fields.age === 34);
+    check("parse-profile picks up state from free text", parseBody.fields && parseBody.fields.state === "Andhra Pradesh");
+    check("parse-profile picks up occupation from free text", parseBody.fields && parseBody.fields.occupation === "farmer");
+
+    const parseBadRes = await fetch(`${BASE}/api/parse-profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "" }),
+    });
+    check("POST /api/parse-profile with empty text returns 400", parseBadRes.status === 400);
+
     // POST /api/schemes/:id/verify — human-confirmed provenance update
     const verifyRes = await fetch(`${BASE}/api/schemes/pmkisan/verify`, {
       method: "POST",
