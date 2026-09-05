@@ -68,13 +68,13 @@ function icsEscape(text) {
     .replace(/\n/g, "\\n");
 }
 
-// Builds a single-event .ics calendar file for one matched scheme.
-// `schemeName` / `statusLabel` come from the client's already-computed
-// match (same data shown on the scheme card) purely for display text —
-// this function makes no eligibility decision of its own.
-function buildReminderIcs({ schemeId, schemeName, statusLabel }) {
+// Builds just the VEVENT lines (no VCALENDAR wrapper) for one scheme.
+// Factored out of buildReminderIcs so a bulk, multi-scheme calendar (see
+// buildBulkReminderIcs below) can reuse the exact same per-event logic
+// instead of duplicating it — one .ics with five VEVENTs is the same
+// correct output as five separate one-VEVENT files, just fewer downloads.
+function buildEventLines({ schemeId, schemeName, statusLabel }, now) {
   const plan = planFor(schemeId);
-  const now = new Date();
   const due = new Date(now.getTime() + plan.days * 24 * 60 * 60 * 1000);
   // All-day-ish event: starts at 9am on the due date, no fixed end time
   // most calendar apps care about for a reminder — one hour is plenty.
@@ -93,11 +93,6 @@ function buildReminderIcs({ schemeId, schemeName, statusLabel }) {
   const uid = `${schemeId}-${now.toISOString().slice(0, 10)}@am-i-eligible`;
 
   return [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Am I Eligible//Scheme Reminder//EN",
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${toIcsDate(now)}`,
@@ -111,9 +106,48 @@ function buildReminderIcs({ schemeId, schemeName, statusLabel }) {
     "TRIGGER:-PT0M",
     "END:VALARM",
     "END:VEVENT",
+  ];
+}
+
+// Builds a single-event .ics calendar file for one matched scheme.
+// `schemeName` / `statusLabel` come from the client's already-computed
+// match (same data shown on the scheme card) purely for display text —
+// this function makes no eligibility decision of its own.
+function buildReminderIcs({ schemeId, schemeName, statusLabel }) {
+  const now = new Date();
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Am I Eligible//Scheme Reminder//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...buildEventLines({ schemeId, schemeName, statusLabel }, now),
     "END:VCALENDAR",
     "",
   ].join("\r\n");
 }
 
-module.exports = { buildReminderIcs, planFor };
+// NEW FEATURE: "Remind me about all of these" — one .ics with one VEVENT
+// per matched scheme, so a citizen with several eligible/pending matches
+// downloads and imports a single file instead of repeating the single-
+// scheme flow above once per scheme. Same data, same per-scheme horizon
+// logic (planFor), just batched. Caps at 25 events — comfortably above
+// this app's entire 21-scheme catalog, just a sane upper bound against a
+// malformed request.
+function buildBulkReminderIcs(items) {
+  const now = new Date();
+  const capped = Array.isArray(items) ? items.slice(0, 25) : [];
+  const events = capped.flatMap((it) => buildEventLines(it, now));
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Am I Eligible//Scheme Reminder (bulk)//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...events,
+    "END:VCALENDAR",
+    "",
+  ].join("\r\n");
+}
+
+module.exports = { buildReminderIcs, buildBulkReminderIcs, planFor };
