@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Am I Eligible? — Ledger</title>
+<meta name="robots" content="noindex" />
+<style>
+  :root{
+    --paper:#FAF6EC;
+    --ink:#1F2A44;
+    --ink-soft:#4A5474;
+    --rule:#DCD2B4;
+    --marigold:#C97A2B;
+    --tulsi:#3F6B4F;
+    --brick:#9C4433;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;
+  }
+  .wrap{max-width:900px;margin:0 auto;padding:56px 28px 96px;}
+  header{border-bottom:1px solid var(--rule);padding-bottom:28px;margin-bottom:40px;}
+  .eyebrow{font-size:13px;color:var(--ink-soft);letter-spacing:.02em;margin:0 0 10px;}
+  h1{
+    font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif;
+    font-size:40px;
+    font-weight:600;
+    margin:0 0 12px;
+    letter-spacing:-0.01em;
+  }
+  .sub{max-width:56ch;color:var(--ink-soft);font-size:15px;margin:0;}
+  .hero-row{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--rule);margin-bottom:44px;}
+  .hero-stat{flex:1 1 160px;padding:22px 20px 22px 0;border-right:1px solid var(--rule);}
+  .hero-stat:last-child{border-right:none;}
+  .hero-num{
+    font-family:Georgia,"Iowan Old Style",serif;
+    font-size:38px;
+    color:var(--marigold);
+    line-height:1;
+  }
+  .hero-label{font-size:12.5px;color:var(--ink-soft);margin-top:8px;}
+  section{margin-bottom:48px;}
+  h2{
+    font-family:Georgia,"Iowan Old Style",serif;
+    font-size:20px;
+    font-weight:600;
+    margin:0 0 6px;
+  }
+  .section-note{font-size:13px;color:var(--ink-soft);margin:0 0 20px;max-width:60ch;}
+  .bar-row{display:flex;align-items:center;gap:14px;padding:8px 0;border-bottom:1px solid var(--rule);}
+  .bar-row:last-child{border-bottom:none;}
+  .bar-label{width:150px;flex:0 0 150px;font-size:13.5px;color:var(--ink);text-transform:capitalize;}
+  .bar-track{flex:1;background:#EFE8D6;height:16px;position:relative;}
+  .bar-fill{background:var(--marigold);height:100%;transition:width .6s ease;}
+  .bar-fill.alt{background:var(--tulsi);}
+  .bar-n{width:34px;text-align:right;font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums;}
+  .chain{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .chip{
+    border:1px solid var(--rule);
+    padding:6px 12px;
+    font-size:13px;
+    color:var(--ink);
+    background:#fff;
+  }
+  .chip.active{border-color:var(--tulsi);color:var(--tulsi);font-weight:600;}
+  .arrow{color:var(--ink-soft);font-size:13px;}
+  .empty{font-size:14px;color:var(--ink-soft);font-style:italic;}
+  .foot{border-top:1px solid var(--rule);padding-top:20px;font-size:12.5px;color:var(--ink-soft);}
+  .foot a{color:var(--marigold);}
+  .refresh-note{font-size:12px;color:var(--ink-soft);margin-top:-28px;margin-bottom:36px;}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px;}
+  .status-dot.on{background:var(--tulsi);}
+  .status-dot.off{background:var(--brick);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">AM I ELIGIBLE? — LIVE LEDGER</p>
+    <h1>What's happening right now</h1>
+    <p class="sub">A running record of this deployment: how many citizens have checked, what they typically qualify for, and whether the AI layer is actually configured and failing over the way the README claims. Numbers only — no names, no phone numbers, nothing identifying is ever logged.</p>
+  </header>
+
+  <div class="hero-row" id="heroRow">
+    <div class="hero-stat"><div class="hero-num">—</div><div class="hero-label">Citizens checked</div></div>
+    <div class="hero-stat"><div class="hero-num">—</div><div class="hero-label">Avg. schemes matched</div></div>
+    <div class="hero-stat"><div class="hero-num">—</div><div class="hero-label">Schemes in catalog</div></div>
+    <div class="hero-stat"><div class="hero-num">—</div><div class="hero-label">AI cache hit rate</div></div>
+  </div>
+
+  <section>
+    <h2>AI provider status</h2>
+    <p class="section-note">The failover chain this deployment is actually configured with, and which provider served the most recent AI call.</p>
+    <div class="chain" id="providerChain"><span class="empty">Loading…</span></div>
+  </section>
+
+  <section>
+    <h2>Top occupations checking eligibility</h2>
+    <p class="section-note">Which occupation-aware branches of the questionnaire are getting used.</p>
+    <div id="occupationBars"><span class="empty">Loading…</span></div>
+  </section>
+
+  <section>
+    <h2>Top states</h2>
+    <p class="section-note">Where citizens checking eligibility are located.</p>
+    <div id="stateBars"><span class="empty">Loading…</span></div>
+  </section>
+
+  <p class="refresh-note" id="refreshNote"></p>
+
+  <div class="foot">
+    Built for the "Am I Eligible?" welfare-scheme discovery prototype. Reads only the app's own
+    <code>GET /api/stats</code> and <code>GET /api/schemes</code> endpoints — no separate backend. See <a href="/">the citizen-facing app</a>.
+  </div>
+</div>
+
+<script>
+(function(){
+  function barRows(container, rows, altClass){
+    if(!rows.length){ container.innerHTML = '<span class="empty">No submissions yet — try the form to seed this.</span>'; return; }
+    var max = Math.max.apply(null, rows.map(function(r){ return r.n; }));
+    container.innerHTML = rows.map(function(r){
+      var pct = max > 0 ? Math.round((r.n / max) * 100) : 0;
+      var label = (r.occupation || r.state || '—');
+      return '<div class="bar-row">' +
+        '<div class="bar-label">' + label + '</div>' +
+        '<div class="bar-track"><div class="bar-fill' + (altClass ? ' alt' : '') + '" style="width:' + pct + '%"></div></div>' +
+        '<div class="bar-n">' + r.n + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderHero(stats){
+    var heroNums = document.querySelectorAll('#heroRow .hero-num');
+    heroNums[0].textContent = stats.totalSubmissions != null ? stats.totalSubmissions : '—';
+    heroNums[1].textContent = stats.avgMatchesPerCitizen != null ? stats.avgMatchesPerCitizen : '—';
+    heroNums[2].textContent = stats.schemesIndexed != null ? stats.schemesIndexed : '—';
+    heroNums[3].textContent = stats.aiCacheHitRatePct != null ? stats.aiCacheHitRatePct + '%' : '—';
+  }
+
+  function renderChain(stats){
+    var el = document.getElementById('providerChain');
+    var chain = stats.aiProviderChain || [];
+    if(!chain.length){
+      el.innerHTML = '<span class="status-dot off"></span><span class="empty">No AI provider key configured — every AI endpoint is serving deterministic templates.</span>';
+      return;
+    }
+    var lastUsed = (stats.aiLastProviderUsed && stats.aiLastProviderUsed.provider) || null;
+    el.innerHTML = '<span class="status-dot on"></span>' + chain.map(function(name, i){
+      var isLast = name === lastUsed;
+      return (i > 0 ? '<span class="arrow">→</span>' : '') +
+        '<span class="chip' + (isLast ? ' active' : '') + '">' + name + (isLast ? ' (last used)' : '') + '</span>';
+    }).join('');
+  }
+
+  function load(){
+    fetch('/api/stats').then(function(r){ return r.json(); }).then(function(stats){
+      renderHero(stats);
+      renderChain(stats);
+      barRows(document.getElementById('occupationBars'), stats.byOccupation || [], false);
+      barRows(document.getElementById('stateBars'), stats.topStates || [], true);
+      document.getElementById('refreshNote').textContent = 'Last refreshed ' + new Date().toLocaleTimeString();
+    }).catch(function(){
+      document.getElementById('refreshNote').textContent = 'Could not reach /api/stats — is the server running?';
+    });
+  }
+
+  load();
+  setInterval(load, 15000); // light polling, fine for a demo-scale dashboard
+})();
+</script>
+</body>
+</html>
