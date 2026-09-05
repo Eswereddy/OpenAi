@@ -15,6 +15,7 @@ const CHAT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min — the quick-question chips
 
 const MAX_HISTORY_TURNS = 6; // trims a runaway client-side history to something sane
 const MAX_MESSAGE_LEN = 500;
+const LANGUAGE_NAME = { en: "English", hi: "Hindi", te: "Telugu" };
 
 // Builds a compact, plain-text version of the scheme catalog so the model
 // answers from the app's own real data instead of general knowledge — it
@@ -45,7 +46,7 @@ function systemPrompt(catalogById, language, matchedSchemeNames) {
     `if asked "am I eligible", tell them to use the form above and explain what it checks. ` +
     `Never invent a scheme, benefit amount, or document requirement that isn't in the list below. ` +
     `If a question is unrelated to this app or these schemes, politely say so and redirect to what you can help with. ` +
-    `Respond in ${language === "hi" ? "Hindi" : "English"}.` +
+    `Respond in ${LANGUAGE_NAME[language] || "English"}.` +
     personalLine +
     `\n\nKnown schemes:\n${buildCatalogContext(catalogById)}`;
 }
@@ -60,12 +61,12 @@ function sanitizeHistory(history) {
 
 async function answerQuestion({ message, history, catalogById, language, matchedSchemeNames }) {
   if (!hasProvider()) {
-    return {
-      reply: language === "hi"
-        ? "यह सहायक फ़िलहाल उपलब्ध नहीं है। कृपया ऊपर दिए गए फ़ॉर्म का उपयोग करें या \"क्यों?\" लिंक देखें।"
-        : "This assistant isn't available right now. Please use the form above, or check each scheme's \"Why?\" link for details.",
-      source: "unavailable",
+    const unavailable = {
+      hi: "यह सहायक फ़िलहाल उपलब्ध नहीं है। कृपया ऊपर दिए गए फ़ॉर्म का उपयोग करें या \"क्यों?\" लिंक देखें।",
+      te: "ఈ సహాయకుడు ప్రస్తుతం అందుబాటులో లేరు. దయచేసి పైన ఉన్న ఫారమ్‌ను ఉపయోగించండి లేదా ప్రతి పథకం యొక్క \"ఎందుకు?\" లింక్‌ను చూడండి.",
+      en: "This assistant isn't available right now. Please use the form above, or check each scheme's \"Why?\" link for details.",
     };
+    return { reply: unavailable[language] || unavailable.en, source: "unavailable" };
   }
   const trimmedMessage = String(message || "").slice(0, MAX_MESSAGE_LEN);
   const messages = [...sanitizeHistory(history), { role: "user", content: trimmedMessage }];
@@ -99,12 +100,12 @@ async function answerQuestion({ message, history, catalogById, language, matched
     return { reply, source: "ai" };
   } catch (err) {
     console.error("Chat assistant failed:", err.message);
-    return {
-      reply: language === "hi"
-        ? "माफ़ करें, अभी जवाब नहीं दे पा रहे। कृपया दोबारा कोशिश करें।"
-        : "Sorry, I couldn't get an answer just now. Please try again in a moment.",
-      source: "error",
+    const failure = {
+      hi: "माफ़ करें, अभी जवाब नहीं दे पा रहे। कृपया दोबारा कोशिश करें।",
+      te: "క్షమించండి, ప్రస్తుతం సమాధానం ఇవ్వలేకపోతున్నాము. దయచేసి కొద్దిసేపటి తర్వాత మళ్ళీ ప్రయత్నించండి.",
+      en: "Sorry, I couldn't get an answer just now. Please try again in a moment.",
     };
+    return { reply: failure[language] || failure.en, source: "error" };
   }
 }
 
