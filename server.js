@@ -16,6 +16,7 @@ const { generateChecklist } = require("./document-checklist");
 const { parseProfileFromText } = require("./profile-parser");
 const { getCacheStats } = require("./ai-cache");
 const { activeProviderName, providerChain, lastProviderUsed } = require("./ai-provider");
+const { buildEligibilityReportPdf } = require("./pdf-report"); // NEW FEATURE: downloadable PDF eligibility summary
 
 // Minimal local-dev .env loader — no dependency added, matches this repo's
 // "as few dependencies as the task actually needs" style. Only fills in
@@ -90,6 +91,7 @@ const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
 const actionPlanLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 const checklistLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 const parseProfileLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
+const pdfReportLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 }); // NEW FEATURE: PDF generation is heavier than a JSON response, so a tighter cap than /api/match
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -158,7 +160,7 @@ app.post("/api/summary", summaryLimiter, (req, res) => {
         profile: sanitizeProfile(profile || {}),
         matches,
         catalogById,
-        language: language === "hi" ? "hi" : "en",
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
       });
       res.json({ summary, source });
     } catch (err) {
@@ -187,7 +189,7 @@ app.post("/api/chat", chatLimiter, (req, res) => {
         message,
         history,
         catalogById,
-        language: language === "hi" ? "hi" : "en",
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
         matchedSchemeNames,
       });
       res.json({ reply, source });
@@ -217,7 +219,7 @@ app.post("/api/action-plan", actionPlanLimiter, (req, res) => {
         profile: sanitizeProfile(profile || {}),
         matches,
         catalogById,
-        language: language === "hi" ? "hi" : "en",
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
       });
       res.json({ plan, source });
     } catch (err) {
@@ -244,7 +246,7 @@ app.post("/api/checklist", checklistLimiter, (req, res) => {
       const { checklist, source } = await generateChecklist({
         matches,
         catalogById,
-        language: language === "hi" ? "hi" : "en",
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
       });
       res.json({ checklist, source });
     } catch (err) {
@@ -271,12 +273,42 @@ app.post("/api/parse-profile", parseProfileLimiter, (req, res) => {
       }
       const { fields, source } = await parseProfileFromText({
         text,
-        language: language === "hi" ? "hi" : "en",
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
       });
       res.json({ fields, source });
     } catch (err) {
       console.error("POST /api/parse-profile failed:", err);
       res.status(500).json({ error: "Could not read that just now — please fill the form in by hand." });
+    }
+  })();
+});
+
+// POST /api/report/pdf — NEW FEATURE. Takes the same {profile, matches} the
+// client already has (from /api/match or the on-device fallback engine) and
+// returns a downloadable PDF eligibility summary. Purely a rendering layer
+// over data the rule engine already decided — see pdf-report.js — so it
+// can't introduce a verdict that disagrees with what's on screen, and it
+// never calls an AI provider.
+app.post("/api/report/pdf", pdfReportLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { profile, matches } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const pdfBuffer = await buildEligibilityReportPdf({
+        profile: sanitizeProfile(profile || {}),
+        matches,
+        catalogById,
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "attachment; filename=eligibility-summary.pdf");
+      res.send(pdfBuffer);
+    } catch (err) {
+      console.error("POST /api/report/pdf failed:", err);
+      res.status(500).json({ error: "Could not generate the PDF right now." });
     }
   })();
 });
@@ -381,10 +413,4 @@ app.listen(PORT, () => console.log(`Am I Eligible? backend running on port ${POR
 // demonstrate the retention policy actually runs, not a production scheduler.
 try {
   const purged = purgeOldSubmissions();
-  if (purged) console.log(`Startup retention purge: removed ${purged} submission row(s) past the retention window.`);
-} catch (err) {
-  console.error("Startup retention purge failed:", err);
-}
-setInterval(() => {
-  try { purgeOldSubmissions(); } catch (err) { console.error("Scheduled retention purge failed:", err); }
-}, 24 * 60 * 60 * 1000);
+  if (purged) console.log(`Startup retention purge: removed ${purged} submission row(s) past the
