@@ -1,0 +1,539 @@
+// server.js
+// Thin Express API in front of the rules engine (schemes.js) and the SQLite
+// database (db/index.js). Kept deliberately simple: five endpoints, no
+// auth needed because no personal or sensitive data is ever collected.
+
+const path = require("path");
+const fs = require("fs");
+const express = require("express");
+const { matchProfile, explainScheme, SCHEME_METADATA } = require("./schemes");
+const { getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions, logFeedback, getFeedbackStats } = require("./db");
+const { sanitizeProfile } = require("./validate");
+const { generateSummary } = require("./ai-summary");
+const { answerQuestion } = require("./chat-assistant");
+const { generateActionPlan } = require("./action-plan");
+const { generateChecklist } = require("./document-checklist");
+const { parseProfileFromText } = require("./profile-parser");
+const { getCacheStats } = require("./ai-cache");
+const { activeProviderName, providerChain, lastProviderUsed } = require("./ai-provider");
+const { buildEligibilityReportPdf } = require("./pdf-report"); // NEW FEATURE: downloadable PDF eligibility summary
+const { buildQrCodePng } = require("./qrcode-report"); // NEW FEATURE: QR code share/resume link
+const { computeImpact } = require("./impact-stats"); // NEW FEATURE: homepage live impact ticker
+const { buildReminderIcs } = require("./reminder"); // NEW FEATURE: "remind me later" calendar file per scheme
+
+// Minimal local-dev .env loader — no dependency added, matches this repo's
+// "as few dependencies as the task actually needs" style. Only fills in
+// vars that AREN'T already set, so a real host's environment (Render, etc.)
+// always wins over a stray local .env file. Silently does nothing if there
+// is no .env — that's the normal case on a real deployment, where secrets
+// are set directly in the host's dashboard instead of a file.
+(function loadDotEnv() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, "utf8").split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+    if (key && !(key in process.env)) process.env[key] = value;
+  }
+})();
+
+const app = express();
+
+// A few security headers by hand rather than pulling in helmet for a
+// four-header prototype: disables MIME-sniffing, blocks this app from being
+// framed (clickjacking), and stops the default Express fingerprint header.
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+// 50kb is generous for this form's payload (a few dozen short fields) and
+// small enough that no one can use /api/match as a free multi-megabyte
+// upload endpoint. A body over the limit is rejected by body-parser with a
+// PayloadTooLargeError, caught by the JSON error handler below.
+app.use(express.json({ limit: "50kb" }));
+app.use(express.static(path.join(__dirname, "public")));
+
+// Minimal in-memory rate limiting: a fixed window per IP, per route group.
+// No new dependency, no persistence — resets on restart, which is fine for
+// a prototype with no auth. This isn't meant to stop a determined attacker
+// (an in-memory, per-process counter can't, behind a load balancer or
+// multiple dynos), just to blunt accidental hammering (a buggy client stuck
+// in a retry loop) and naive scripted abuse of the two write-ish endpoints.
+function rateLimit({ windowMs, max }) {
+  const hits = new Map(); // ip -> { count, resetAt }
+  return (req, res, next) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const entry = hits.get(ip);
+    if (!entry || now > entry.resetAt) {
+      hits.set(ip, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    if (entry.count >= max) {
+      return res.status(429).json({ error: "Too many requests. Please slow down and try again shortly." });
+    }
+    entry.count++;
+    next();
+  };
+}
+const matchLimiter = rateLimit({ windowMs: 60 * 1000, max: 30 }); // 30 checks/min/IP is well above real usage
+const verifyLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
+// Tighter than matchLimiter: each call may hit a paid external API, so this
+// caps both cost and how hard the endpoint can be hammered.
+const summaryLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
+const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
+const actionPlanLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
+const checklistLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
+const parseProfileLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
+const pdfReportLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 }); // NEW FEATURE: PDF generation is heavier than a JSON response, so a tighter cap than /api/match
+const qrCodeLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 }); // NEW FEATURE: QR rendering is cheap, but still capped like every other write-ish endpoint
+const feedbackLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 }); // NEW FEATURE: cheap write, but still capped like every other write-ish endpoint
+const reminderLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 }); // NEW FEATURE: generating a tiny text file is cheap, but capped like every other route
+
+// GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
+// Read from the database, which is the source of truth for displayable
+// content, then stitch in `criteria` — the plain-English rule list from
+// schemes.js — since eligibility *rules* live in code (versioned with the
+// app), not in the DB (which holds editable/verifiable provenance). This
+// is what lets every scheme card in the UI answer "why do you say this?"
+// without a second round-trip.
+app.get("/api/schemes", (req, res) => {
+  try {
+    const schemes = getAllSchemes().map((s) => {
+      const explanation = explainScheme(s.id);
+      return { ...s, criteria: explanation ? explanation.criteria : [] };
+    });
+    res.json({ schemes });
+  } catch (err) {
+    console.error("GET /api/schemes failed:", err);
+    res.status(500).json({ error: "Could not load schemes." });
+  }
+});
+
+// POST /api/match — the core endpoint. Takes a citizen's profile (no name,
+// no ID numbers — just coarse attributes) and returns which schemes match,
+// with an explanation for each. Also logs an anonymised summary so a real
+// deployment could see which schemes are most/least discovered by region.
+app.post("/api/match", matchLimiter, (req, res) => {
+  try {
+    // Sanitize at the boundary: drops out-of-range/malformed fields (a
+    // negative age, an income of -100, a multi-kilobyte "state" string)
+    // back to "not provided" rather than letting them reach the rules
+    // engine or the database. See validate.js for what this does and why.
+    const profile = sanitizeProfile(req.body);
+    const matches = matchProfile(profile);
+    // matches now includes "not_eligible" / "insufficient_info" entries too
+    // (so the citizen sees the full, honest picture) — but the stats table
+    // is meant to answer "how many schemes did this person likely qualify
+    // for", so only count the positive statuses there.
+    const positiveMatches = matches.filter(m => m.status === "eligible" || m.status === "needs_verification");
+    logSubmission(profile, positiveMatches);
+    res.json({ matches });
+  } catch (err) {
+    console.error("POST /api/match failed:", err);
+    res.status(500).json({ error: "Could not compute matches." });
+  }
+});
+
+// POST /api/summary — the AI layer. Takes the same profile + matches the
+// client already has (computed a moment ago by /api/match, or by the
+// on-device fallback engine) and returns one short, personalized,
+// plain-language paragraph explaining the results. Deliberately a separate,
+// optional call from /api/match: the rule engine's verdict is always
+// available and correct on its own; this only adds a friendlier explanation
+// on top, and degrades to a template (see ai-summary.js) if no API key is
+// configured or the model call fails, so it can never block a citizen from
+// seeing their results.
+app.post("/api/summary", summaryLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { profile, matches, language } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { summary, source } = await generateSummary({
+        profile: sanitizeProfile(profile || {}),
+        matches,
+        catalogById,
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
+      });
+      res.json({ summary, source });
+    } catch (err) {
+      console.error("POST /api/summary failed:", err);
+      res.status(500).json({ error: "Could not generate summary." });
+    }
+  })();
+});
+
+// POST /api/chat — the FAQ chatbot. A second, independent AI touchpoint
+// from /api/summary: this answers open-ended questions ("what documents do
+// I need for PM-KISAN?") grounded in the same scheme catalog, rather than
+// summarizing a specific match result. Never asked to give a final
+// eligibility verdict — see chat-assistant.js's system prompt — so it can
+// never contradict the rule engine's own answer.
+app.post("/api/chat", chatLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { message, history, language, matchedSchemeNames } = req.body || {};
+      if (typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "message is required." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { reply, source } = await answerQuestion({
+        message,
+        history,
+        catalogById,
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
+        matchedSchemeNames,
+      });
+      res.json({ reply, source });
+    } catch (err) {
+      console.error("POST /api/chat failed:", err);
+      res.status(500).json({ error: "Could not answer that right now." });
+    }
+  })();
+});
+
+// POST /api/action-plan — the "AI agent" touchpoint. Distinct from
+// /api/summary (which only explains the current results): this reasons
+// across every match — including "not eligible" / "needs verification" /
+// "insufficient info" ones — and turns the rule engine's own flagged
+// follow-ups into a short, prioritized list of next actions. Never invents
+// a step; see action-plan.js for exactly how it's grounded.
+app.post("/api/action-plan", actionPlanLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { profile, matches, language } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { plan, source } = await generateActionPlan({
+        profile: sanitizeProfile(profile || {}),
+        matches,
+        catalogById,
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
+      });
+      res.json({ plan, source });
+    } catch (err) {
+      console.error("POST /api/action-plan failed:", err);
+      res.status(500).json({ error: "Could not generate an action plan." });
+    }
+  })();
+});
+
+// POST /api/checklist — consolidates and de-duplicates the document lists
+// of every matched scheme into one checklist, with a short "how to get it"
+// tip per document. See document-checklist.js: document names and which
+// schemes need them come straight from the scheme catalog, never invented;
+// only the tip text for uncommon documents ever touches AI.
+app.post("/api/checklist", checklistLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { matches, language } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { checklist, source } = await generateChecklist({
+        matches,
+        catalogById,
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
+      });
+      res.json({ checklist, source });
+    } catch (err) {
+      console.error("POST /api/checklist failed:", err);
+      res.status(500).json({ error: "Could not build a document checklist." });
+    }
+  })();
+});
+
+// POST /api/parse-profile — the "fill by talking" AI touchpoint. Takes one
+// free-form sentence (typed, or transcribed from voice on the client) and
+// returns a partial set of the SAME fields the form itself collects — never
+// a new field, never an eligibility verdict. The client only ever uses this
+// to pre-fill form inputs the citizen can still see, edit, and correct
+// before submitting; matchProfile() and the rest of the eligibility flow
+// are completely untouched by this endpoint. See profile-parser.js for the
+// exact extraction rules and the offline heuristic fallback.
+app.post("/api/parse-profile", parseProfileLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { text, language } = req.body || {};
+      if (typeof text !== "string" || !text.trim()) {
+        return res.status(400).json({ error: "text is required." });
+      }
+      const { fields, source } = await parseProfileFromText({
+        text,
+        language: ["hi", "te"].includes(language) ? language : "en", // BUGFIX: previously dropped Telugu ("te") down to English on every AI route
+      });
+      res.json({ fields, source });
+    } catch (err) {
+      console.error("POST /api/parse-profile failed:", err);
+      res.status(500).json({ error: "Could not read that just now — please fill the form in by hand." });
+    }
+  })();
+});
+
+// POST /api/report/pdf — NEW FEATURE. Takes the same {profile, matches} the
+// client already has (from /api/match or the on-device fallback engine) and
+// returns a downloadable PDF eligibility summary. Purely a rendering layer
+// over data the rule engine already decided — see pdf-report.js — so it
+// can't introduce a verdict that disagrees with what's on screen, and it
+// never calls an AI provider.
+app.post("/api/report/pdf", pdfReportLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { profile, matches } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const pdfBuffer = await buildEligibilityReportPdf({
+        profile: sanitizeProfile(profile || {}),
+        matches,
+        catalogById,
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "attachment; filename=eligibility-summary.pdf");
+      res.send(pdfBuffer);
+    } catch (err) {
+      console.error("POST /api/report/pdf failed:", err);
+      res.status(500).json({ error: "Could not generate the PDF right now." });
+    }
+  })();
+});
+
+// POST /api/qrcode — NEW FEATURE. Renders a QR code PNG for a short piece
+// of text — in practice, a link back into this app carrying a citizen's own
+// answers (see the "Share via QR" button in public/index.html), so someone
+// else can scan it, land on the same form pre-filled, and check for
+// themselves. See qrcode-report.js: this route has no opinion about what
+// the text means and never touches the rule engine or an AI provider.
+app.post("/api/qrcode", qrCodeLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { text } = req.body || {};
+      if (typeof text !== "string" || !text.trim()) {
+        return res.status(400).json({ error: "text is required." });
+      }
+      const png = await buildQrCodePng(text);
+      res.setHeader("Content-Type", "image/png");
+      res.send(png);
+    } catch (err) {
+      console.error("POST /api/qrcode failed:", err);
+      res.status(500).json({ error: "Could not generate a QR code right now." });
+    }
+  })();
+});
+
+// GET /api/schemes/:id/reminder.ics — NEW FEATURE: "🔔 Remind me later".
+// Returns a downloadable calendar file nudging the citizen to come back and
+// follow up on one matched scheme. schemeName/status are passed as query
+// params from the client's own already-computed match (see public/index.html)
+// purely for display text on the calendar event — this route makes no
+// eligibility decision and stores nothing server-side. See reminder.js for
+// how the follow-up horizon per scheme is chosen.
+app.get("/api/schemes/:id/reminder.ics", reminderLimiter, (req, res) => {
+  try {
+    const schemeId = String(req.params.id || "").slice(0, 64);
+    const schemeName = typeof req.query.name === "string" ? req.query.name.slice(0, 200) : schemeId;
+    const statusLabel = typeof req.query.status === "string" ? req.query.status.slice(0, 40) : null;
+    const ics = buildReminderIcs({ schemeId, schemeName, statusLabel });
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${schemeId}-reminder.ics"`);
+    res.send(ics);
+  } catch (err) {
+    console.error("GET /api/schemes/:id/reminder.ics failed:", err);
+    res.status(500).json({ error: "Could not build a reminder right now." });
+  }
+});
+
+// GET /api/stats — aggregate, anonymised numbers only. This is the seed of
+// the "how would this work at scale" story: which occupations and states are
+// asking, and how many schemes people typically qualify for but likely never
+// knew about.
+app.get("/api/stats", (req, res) => {
+  try {
+    res.json({
+      ...getStats(),
+      ...getCacheStats(),
+      aiProvider: activeProviderName(),
+      // Full Groq → OpenAI → Anthropic failover chain (only configured
+      // providers appear), plus which one actually served the last AI
+      // call and how many attempts it took — real evidence the automatic
+      // failover is wired up, not just which key happens to be set.
+      aiProviderChain: providerChain(),
+      aiLastProviderUsed: lastProviderUsed(),
+    });
+  } catch (err) {
+    console.error("GET /api/stats failed:", err);
+    res.status(500).json({ error: "Could not load stats." });
+  }
+});
+
+// POST /api/schemes/:id/verify — records that a human actually checked this
+// scheme's data against its official source (a notification, the scheme's
+// own portal, etc). This is deliberately a real action, not a data-entry
+// shortcut: it's how last_verified/version move forward, and it's the only
+// path that does — a re-seed from schemes.js never overwrites these once set
+// (see the ON CONFLICT clause in db/index.js). No auth layer here since this
+// demo has none at all, but a real deployment would restrict this to staff.
+app.post("/api/schemes/:id/verify", verifyLimiter, (req, res) => {
+  try {
+    const { sourceAuthority, sourceNote, sourceUrl, verifiedAt } = req.body || {};
+    const updated = markSchemeVerified(req.params.id, { sourceAuthority, sourceNote, sourceUrl, verifiedAt });
+    if (!updated) return res.status(404).json({ error: "Unknown scheme id." });
+    res.json({ scheme: updated });
+  } catch (err) {
+    console.error("POST /api/schemes/:id/verify failed:", err);
+    res.status(500).json({ error: "Could not record verification." });
+  }
+});
+
+// GET /api/schemes/:id/why — the "Why do you say this?" endpoint. Returns
+// the full provenance chain for one scheme: the plain-English criteria the
+// engine actually evaluated (derived live from schemes.js's
+// populationRules/requirementRules, so it can't drift from the real rules),
+// plus who owns the underlying facts, where to go verify them, and how
+// stale the entry is. Reads live from the DB for sourceAuthority/sourceUrl/
+// lastVerified/version so a human re-verification (via /verify above) is
+// reflected immediately, without needing a redeploy.
+app.get("/api/schemes/:id/why", (req, res) => {
+  try {
+    const explanation = explainScheme(req.params.id);
+    if (!explanation) return res.status(404).json({ error: "Unknown scheme id." });
+    const dbRow = getAllSchemes().find((s) => s.id === req.params.id);
+    res.json({
+      ...explanation,
+      sourceAuthority: (dbRow && dbRow.sourceAuthority) || explanation.sourceAuthority,
+      sourceNote: (dbRow && dbRow.sourceNote) || explanation.sourceNote,
+      sourceUrl: (dbRow && dbRow.sourceUrl) || explanation.sourceUrl,
+      lastVerified: (dbRow && dbRow.lastVerified) || explanation.lastVerified,
+      version: (dbRow && dbRow.version) || explanation.version,
+    });
+  } catch (err) {
+    console.error("GET /api/schemes/:id/why failed:", err);
+    res.status(500).json({ error: "Could not load provenance." });
+  }
+});
+
+// GET /api/impact — NEW FEATURE: powers the homepage "impact ticker"
+// (citizens helped, total estimated ₹ matched). Deliberately a separate,
+// cheap, cacheable endpoint from /api/stats (which is dashboard-oriented and
+// does more work) so the homepage can poll it on load without competing with
+// the analytics dashboard's queries. Every number here is derived from real
+// logged submissions — see impact-stats.js — never a placeholder constant.
+app.get("/api/impact", (req, res) => {
+  try {
+    res.json(computeImpact());
+  } catch (err) {
+    console.error("GET /api/impact failed:", err);
+    res.status(500).json({ error: "Could not load impact stats." });
+  }
+});
+
+const VALID_SCHEME_IDS = new Set(SCHEME_METADATA.map((s) => s.id));
+
+// POST /api/feedback — NEW FEATURE: the feedback loop. A citizen marks one
+// matched scheme as helpful/not helpful (optionally with a short comment).
+// This is real signal, not a vanity widget: getFeedbackStats() below
+// surfaces which schemes have a low helpful-rate, which is exactly the kind
+// of prioritization input a human re-verification pass (POST
+// /api/schemes/:id/verify, already in this file) needs. Never touches
+// eligibility itself and never blocks the rest of the app if it fails.
+app.post("/api/feedback", feedbackLimiter, (req, res) => {
+  try {
+    const { schemeId, helpful, statusShown, comment } = req.body || {};
+    if (!schemeId || typeof schemeId !== "string" || !VALID_SCHEME_IDS.has(schemeId)) {
+      return res.status(400).json({ error: "A valid schemeId is required." });
+    }
+    if (typeof helpful !== "boolean") {
+      return res.status(400).json({ error: "helpful must be true or false." });
+    }
+    logFeedback(schemeId, helpful, {
+      statusShown: typeof statusShown === "string" ? statusShown.slice(0, 40) : null,
+      comment: typeof comment === "string" ? comment : null,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("POST /api/feedback failed:", err);
+    res.status(500).json({ error: "Could not record feedback." });
+  }
+});
+
+// GET /api/feedback/stats — NEW FEATURE: aggregated, per-scheme feedback
+// numbers for the analytics dashboard (public/dashboard.html). No raw
+// comments returned here on purpose — dashboard is a lightweight ops view,
+// not a place to surface free text without a moderation step.
+app.get("/api/feedback/stats", (req, res) => {
+  try {
+    res.json({ feedback: getFeedbackStats() });
+  } catch (err) {
+    console.error("GET /api/feedback/stats failed:", err);
+    res.status(500).json({ error: "Could not load feedback stats." });
+  }
+});
+
+// GET /api/ping — NEW FEATURE: a near-instant, cache-busted endpoint the
+// frontend's online/offline banner (public/index.html) polls to tell a
+// "the wifi icon lies" situation (device says online, server is actually
+// unreachable) apart from a genuine offline device — deliberately separate
+// from /healthz so the two concerns (deploy health checks vs. a citizen's
+// live connectivity banner) can evolve independently.
+app.get("/api/ping", (req, res) => res.json({ ok: true, t: Date.now() }));
+
+app.get("/healthz", (req, res) => res.json({ ok: true }));
+
+// Catches body-parser failures (malformed JSON, a body over the 50kb limit)
+// and anything else thrown/next(err)'d in a route above. Express's own
+// default error handler would otherwise return an HTML page with a full
+// stack trace and file paths — fine for local debugging, a real information
+// leak on a public API. This always returns clean JSON instead, and never
+// forwards err.message for a 500 (only for the two well-understood 4xx
+// cases below, where the message is just "the request was malformed", not
+// anything about the server's internals).
+app.use((err, req, res, next) => {
+  if (err && err.type === "entity.too.large") {
+    return res.status(413).json({ error: "Request body too large." });
+  }
+  if (err instanceof SyntaxError && "body" in err) {
+    return res.status(400).json({ error: "Malformed JSON in request body." });
+  }
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Something went wrong on our end." });
+});
+ 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Am I Eligible? backend running on port ${PORT}`));
+ 
+// Data-minimisation: run the retention purge on boot and once a day after
+// that, so anonymous submission rows don't accumulate indefinitely. A real
+// deployment would use a proper scheduled job (cron, a queue, etc.) instead
+// of an in-process timer that resets on every restart — this is enough to
+// demonstrate the retention policy actually runs, not a production scheduler.
+try {
+  const purged = purgeOldSubmissions();
+  if (purged) console.log(`Startup retention purge: removed ${purged} submission row(s) past the retention window.`);
+} catch (err) {
+  console.error("Startup retention purge failed:", err);
+}
+setInterval(() => {
+  try { purgeOldSubmissions(); } catch (err) { console.error("Scheduled retention purge failed:", err); }
+}, 24 * 60 * 60 * 1000);
+ 
