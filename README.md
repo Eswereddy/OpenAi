@@ -7,6 +7,16 @@ few extra ones only for farmers, students, or construction workers) and
 tells you which of 17 real, well-known schemes you likely qualify for — in
 plain language, with an explanation for every match.
 
+**Two things judges look for, addressed directly:** AI integration is five
+grounded touchpoints, not one bolted-on chatbot — see "AI integration"
+below, especially the newest one, **fill-by-talking form autofill**. And the
+user's actual pain point (typing through a long, unfamiliar government form
+on a slow phone) is attacked at the point where people actually drop off:
+before and during the form, not just after — a live per-scheme *and*
+rupee-value estimate as you type ("6 schemes look possible so far — up to
+₹1.8 lakh in benefits"), and now a way to skip the typing altogether by just
+describing yourself in one sentence.
+
 ## Architecture
 
 ```
@@ -52,6 +62,13 @@ action-plan.js         The AI agent layer. Reasons across every match —
                       follow-ups into a short, prioritized action plan.
                       Degrades to a plain numbered list of those same
                       follow-ups if no AI key is set.
+profile-parser.js      The AI form-fill layer. Turns one free-form sentence
+                      ("I'm a 34 year old farmer in Andhra Pradesh...") into
+                      the same structured fields the eligibility form
+                      already collects — never a new field, never an
+                      eligibility verdict. Degrades to a dependency-free
+                      regex/keyword parser (with basic Hindi coverage) if no
+                      AI key is set or the call fails.
 document-checklist.js  Consolidates and de-duplicates every matched
                       scheme's required documents into one checklist, with
                       a short "how to get it" tip per document (a built-in
@@ -59,15 +76,16 @@ document-checklist.js  Consolidates and de-duplicates every matched
                       uncommon ones).
 server.js            Express API: GET /api/schemes, POST /api/match,
                       POST /api/summary, POST /api/chat, POST /api/action-plan,
-                      POST /api/checklist, GET /api/stats,
-                      GET /api/schemes/:id/why, POST /api/schemes/:id/verify.
+                      POST /api/checklist, POST /api/parse-profile,
+                      GET /api/stats, GET /api/schemes/:id/why,
+                      POST /api/schemes/:id/verify.
 test/smoke.js         Zero-dependency smoke test hitting every endpoint
                       against a real running server. `npm test`.
 ```
 
 ## AI integration
 
-Four AI touchpoints, all grounded in this app's own scheme data (never
+Five AI touchpoints, all grounded in this app's own scheme data (never
 inventing schemes, benefits, or documents) and all degrading gracefully
 with no external call if unconfigured:
 
@@ -94,7 +112,20 @@ list into one de-duplicated checklist with a short "where to get it" tip
 per document, so a citizen matching 5+ schemes doesn't have to cross-check
 each scheme card by hand. See `document-checklist.js`.
 
-Set one of these environment variables to enable all four AI features at
+**5. Fill by talking (AI form-fill)** — a "✨ Fill by talking" box above the
+form (with voice input) lets a citizen describe themselves in one or two
+plain sentences instead of tapping through every field: `POST
+/api/parse-profile` turns that sentence into the same structured fields the
+form itself collects — age, state, occupation, income, category, and a
+handful of common flags — and pre-fills the real inputs so the citizen can
+review and correct anything before submitting. It never invents a value
+they didn't say, never fills a field they didn't mention, and never
+touches eligibility itself — the rule engine still only ever reads what's
+actually in the form. This is the most direct answer to "how easily are you
+integrating AI into your product": it removes typing, not judgement. See
+`profile-parser.js`.
+
+Set one of these environment variables to enable all five AI features at
 once:
 
 ```bash
@@ -127,7 +158,7 @@ Llama 3.3 70B). To use it:
 1. Go to https://console.groq.com/keys and sign in (Google/GitHub works).
 2. Click "Create API Key" and copy it.
 3. Copy `env.example.txt` to `.env` and paste it in as `GROQ_API_KEY`.
-4. `npm start` — all four AI features above now work end-to-end for free.
+4. `npm start` — all five AI features above now work end-to-end for free.
 
 `OPENAI_SUMMARY_MODEL` / `ANTHROPIC_SUMMARY_MODEL` / `GROQ_MODEL`
 optionally override each provider's model. With no key set at all, every
@@ -163,9 +194,10 @@ commands automatically:
 ## What's real vs. mocked
 
 **Real:** the full citizen journey, the rule-based matching engine, the
-database, the live/offline fallback, the WhatsApp share link, and all four
+database, the live/offline fallback, the WhatsApp share link, and all five
 AI layers (a real call to OpenAI/Anthropic/Groq when a key is set —
-summary, chatbot, action plan, and document checklist).
+summary, chatbot, action plan, document checklist, and fill-by-talking
+form autofill).
 
 **Mocked:** the schemes reflect publicly known, general eligibility
 criteria — not a live government feed. "Start application" does not submit
