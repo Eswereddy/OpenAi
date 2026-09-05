@@ -294,6 +294,13 @@ async function main() {
     const pmkisanFeedback = (feedbackStatsBody.feedback || []).find((f) => f.schemeId === "pmkisan");
     check("feedback stats aggregate the pmkisan vote just recorded", !!pmkisanFeedback && pmkisanFeedback.total >= 1);
 
+    // GET /api/schemes/:id/reminder.ics — NEW FEATURE: "remind me later" calendar file
+    const reminderRes = await fetch(`${BASE}/api/schemes/pmkisan/reminder.ics?name=${encodeURIComponent("PM-KISAN")}&status=eligible`);
+    const reminderBody = await reminderRes.text();
+    check("GET reminder.ics returns 200", reminderRes.status === 200);
+    check("reminder.ics has calendar content-type", (reminderRes.headers.get("content-type") || "").includes("text/calendar"));
+    check("reminder.ics is a valid VCALENDAR", reminderBody.includes("BEGIN:VCALENDAR") && reminderBody.includes("BEGIN:VALARM") && reminderBody.includes("SUMMARY:Follow up: PM-KISAN"));
+
     // GET /api/ping — NEW FEATURE: online/offline banner heartbeat
     const pingRes = await fetch(`${BASE}/api/ping`);
     const pingBody = await pingRes.json();
