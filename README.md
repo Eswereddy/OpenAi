@@ -284,6 +284,24 @@ static and client-side — no new API call, no per-district directory this
 prototype can't keep current — and it says plainly that it can't look up an
 exact nearby address rather than inventing one.
 
+**🔊 Read questions aloud (voice-guided form)** — a toggle next to the
+language switcher that reads each field's own label aloud the moment it
+gets focus, in whichever of English/Hindi/Telugu is currently selected. The
+existing read-aloud buttons on AI summaries close the loop on the *output*
+side of the app; this closes the same gap on the *input* side, for anyone
+who finds a long, unfamiliar form easier to listen to than read. Reuses the
+same browser `SpeechSynthesis` call the AI-summary read-aloud buttons
+already use — no new dependency, works fully offline, off by default.
+
+**📝 Auto-save and resume your answers** — every change to the form is
+saved locally (never sent anywhere), and a citizen who closes the tab,
+loses signal, or gets interrupted mid-form sees a "pick up where you left
+off?" banner next time they open the page with an empty form. Distinct from
+the QR/link share feature above (which is for handing your answers to
+someone *else*) — this is for the same person coming back later. A draft
+older than 7 days is treated as stale and dropped rather than resurfacing
+answers that may no longer be current.
+
 ## Run locally
 
 ```bash
@@ -362,22 +380,12 @@ stays what it is today: an explainable match, plus a path to the actual
 documents needed and the official portal to apply — this app is a discovery
 layer in front of government systems, never a replacement for them.
 
-**Getting an answer to a user with no signal:**
+**Getting an answer to a user with no signal:
 
-```
 User
  ↓
 Local rule cache
  ↓
 Offline eligibility engine
-```
 
-This is the fallback that already exists in `public/index.html` — the
-on-device logic that runs when the API call is slow or fails — described as
-its own path rather than an afterthought bolted onto the online one. The
-rules engine (`schemes.js`) is small and dependency-free specifically so it
-can ship to the client as a cached bundle and run identically offline; the
-"local rule cache" is just that bundle, refreshed opportunistically whenever
-the device does have connectivity, so a user on a poor connection is always
-evaluated against a recent version of the rules rather than being blocked
-until a request succeeds.
+This is the fallback that already exists in public/index.html — the on-device logic that runs when the API call is slow or fails — described as its own path rather than an afterthought bolted onto the online one. The rules engine (schemes.js) is small and dependency-free specifically so it can ship to the client as a cached bundle and run identically offline; the "local rule cache" is just that bundle, refreshed opportunistically whenever the device does have connectivity, so a user on a poor connection is always evaluated against a recent version of the rules rather than being blocked until a request succeeds.
