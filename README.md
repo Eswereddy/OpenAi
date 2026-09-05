@@ -5,7 +5,8 @@ schemes; most eligible citizens never find out they qualify. This app takes
 a short, occupation-aware questionnaire (a handful of core questions, plus a
 few extra ones only for farmers, students, or construction workers) and
 tells you which of 17 real, well-known schemes you likely qualify for — in
-plain language, with an explanation for every match.
+plain language, with an explanation for every match, in **English, Hindi,
+or Telugu** (see "Language support" below).
 
 **Two things judges look for, addressed directly:** AI integration is five
 grounded touchpoints, not one bolted-on chatbot — see "AI integration"
@@ -70,8 +71,8 @@ profile-parser.js      The AI form-fill layer. Turns one free-form sentence
                       the same structured fields the eligibility form
                       already collects — never a new field, never an
                       eligibility verdict. Degrades to a dependency-free
-                      regex/keyword parser (with basic Hindi coverage) if no
-                      AI key is set or the call fails.
+                      regex/keyword parser (with basic Hindi and Telugu
+                      coverage) if no AI key is set or the call fails.
 document-checklist.js  Consolidates and de-duplicates every matched
                       scheme's required documents into one checklist, with
                       a short "how to get it" tip per document (a built-in
@@ -175,6 +176,42 @@ eligibility *rules* live in code, which is how most real eligibility engines
 are actually built — rules need version control and testing, not just rows
 in a table.
 
+### Language support (English, Hindi, Telugu)
+
+The full citizen journey — not just the AI paragraphs — works in three
+languages. A toggle in the header (English → हिंदी → తెలుగు → English)
+switches:
+
+- **The static UI itself**: header, disclaimers, "how it works", privacy
+  and connectivity panels, and the main profile-form fields (`data-i18n`
+  attributes in `public/index.html`, translated via the `EN`/`HI`/`TE`
+  dictionaries there).
+- **All five AI touchpoints**: summary, chatbot, action plan, document
+  checklist, and fill-by-talking each accept a `language` field and
+  respond in that language — including their deterministic
+  template/heuristic fallbacks when no AI key is set, so switching
+  languages never depends on an API call succeeding. `server.js`'s
+  `normalizeLanguage()` is the single source of truth for which language
+  codes are accepted (`en` / `hi` / `te`); every AI module maps that code
+  to a display language name or a pre-written string.
+- **Fill by talking's offline heuristic parser** (`profile-parser.js`):
+  Hindi and Telugu keyword/number patterns for age, gender, occupation,
+  state, income, land, and the yes/no flags, so "fill by talking" still
+  extracts real fields from Hindi or Telugu speech even with zero AI keys
+  configured.
+- **Voice input and read-aloud**: speech recognition and
+  `SpeechSynthesis` both switch to `hi-IN` / `te-IN` alongside the
+  language toggle.
+
+Telugu was added specifically because a large share of this app's
+target users — rural and semi-urban citizens applying for
+occupation-linked schemes — are Telugu speakers in Andhra Pradesh and
+Telangana; Hindi alone leaves them exactly as underserved as English
+alone did. Adding a fourth language later is additive: one more
+dictionary object in `index.html`, one more branch in each AI module's
+language-name map, and (optionally) a few more heuristic keyword
+patterns — none of the existing plumbing changes shape.
+
 ### How the AI touchpoints connect into one loop
 
 These aren't five separate bolt-ons — they chain into a single citizen
@@ -257,7 +294,7 @@ to any real system. No Aadhaar, OTP, or payment data is collected anywhere.
 - Swap SQLite for Postgres; no query changes needed.
 - Pull scheme content from myScheme / state portals via API instead of a
   static seed.
-- Add regional languages and an SMS/IVR fallback for feature-phone users.
+- Add more regional languages and an SMS/IVR fallback for feature-phone users.
 - Use the `submissions` table (already anonymised) to see which schemes are
   under-discovered by state or occupation, and prioritise outreach there.
 
