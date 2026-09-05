@@ -181,8 +181,10 @@ These aren't five separate bolt-ons — they chain into a single citizen
 journey, each step handing off to the next:
 
 ```
-Speak/type a sentence  →  AI extracts fields   →  Form is pre-filled
-   ("fill by talking")      (profile-parser.js)      (citizen reviews/edits)
+Try an example (1 click)  →  or:  Speak/type a sentence
+        ↓                              ↓
+        └──────────────→  AI extracts fields   →  Form is pre-filled
+                              (profile-parser.js)      (citizen reviews/edits)
         ↓
 Live on-device count + ₹ estimate as the form is completed
         ↓
@@ -209,6 +211,15 @@ engine that already powers the offline fallback and the live preview. Both
 exist specifically to close gaps in the *user flow*, not to add AI for its
 own sake — an AI call it doesn't need would just be slower and less
 reliable than a browser API or a rule engine that's already sitting there.
+
+The "try an example" chips exist for a different audience than a real
+citizen: someone deciding in the first few seconds whether this is worth
+their time at all (a judge, a first-time visitor). One click runs the exact
+same pipeline a real citizen's own sentence would — same API call, same
+autofill, same rule engine, same AI summary — just with a realistic
+pre-written sentence instead of the person's own words, and it auto-submits
+after the fields visibly fill in so the whole journey is visible without
+typing anything.
 
 ## Run locally
 
