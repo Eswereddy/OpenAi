@@ -36,6 +36,22 @@ db.exec(`
     matched_count INTEGER,
     matched_scheme_ids TEXT
   );
+
+  -- NEW FEATURE: per-scheme feedback loop. Lets a citizen mark a specific
+  -- match as actually helpful/not helpful (e.g. "I applied and it worked"
+  -- vs "this didn't apply to me after all") — real signal a production
+  -- deployment would use to catch a scheme whose rules drifted from the
+  -- official criteria, without waiting for a human to manually re-verify
+  -- it (see markSchemeVerified above). No identifying info stored, same
+  -- as submissions.
+  CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    scheme_id TEXT NOT NULL,
+    status_shown TEXT,
+    helpful INTEGER NOT NULL,
+    comment TEXT
+  );
 `);
 
 // Migration for DB files created before portal_name/portal_url existed —
@@ -195,6 +211,48 @@ function purgeOldSubmissions(retentionDays = DEFAULT_RETENTION_DAYS) {
   return result.changes;
 }
 
+// NEW FEATURE: records one citizen's thumbs up/down on a specific scheme
+// match. `comment` is optional free text and deliberately never required —
+// a plain thumbs down is still useful signal on its own. `statusShown` (the
+// verdict the rule engine gave at the time — eligible/needs_verification/
+// not_eligible) is stored alongside so a spike in "not helpful" votes on an
+// "eligible" verdict is distinguishable from one on a "needs_verification"
+// verdict, which point at different kinds of fixes.
+function logFeedback(schemeId, helpful, { statusShown, comment } = {}) {
+  db.prepare(`
+    INSERT INTO feedback (scheme_id, status_shown, helpful, comment)
+    VALUES (@scheme_id, @status_shown, @helpful, @comment)
+  `).run({
+    scheme_id: String(schemeId),
+    status_shown: statusShown ?? null,
+    helpful: helpful ? 1 : 0,
+    comment: comment ? String(comment).slice(0, 500) : null,
+  });
+}
+
+// Aggregated per-scheme feedback — this is the seed of "which schemes need
+// a human to re-check their rules soonest": a low helpful-rate on a scheme
+// is a stronger prioritization signal than last_verified age alone.
+function getFeedbackStats() {
+  const rows = db
+    .prepare(`
+      SELECT scheme_id,
+             COUNT(*) AS total,
+             SUM(helpful) AS helpfulCount
+      FROM feedback
+      GROUP BY scheme_id
+      ORDER BY total DESC
+    `)
+    .all();
+  return rows.map((r) => ({
+    schemeId: r.scheme_id,
+    total: r.total,
+    helpfulCount: r.helpfulCount,
+    notHelpfulCount: r.total - r.helpfulCount,
+    helpfulRate: r.total > 0 ? Math.round((r.helpfulCount / r.total) * 100) : null,
+  }));
+}
+
 function getStats() {
   const { total } = db.prepare("SELECT COUNT(*) AS total FROM submissions").get();
   const { avg } = db.prepare("SELECT AVG(matched_count) AS avg FROM submissions").get();
@@ -218,4 +276,4 @@ function getStats() {
   };
 }
 
-module.exports = { db, getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions };
+module.exports = { db, getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions, logFeedback, getFeedbackStats };
