@@ -17,6 +17,7 @@ const { parseProfileFromText } = require("./profile-parser");
 const { getCacheStats } = require("./ai-cache");
 const { activeProviderName, providerChain, lastProviderUsed } = require("./ai-provider");
 const { buildEligibilityReportPdf } = require("./pdf-report"); // NEW FEATURE: downloadable PDF eligibility summary
+const { buildQrCodePng } = require("./qrcode-report"); // NEW FEATURE: QR code share/resume link
 
 // Minimal local-dev .env loader — no dependency added, matches this repo's
 // "as few dependencies as the task actually needs" style. Only fills in
@@ -92,6 +93,7 @@ const actionPlanLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 const checklistLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 });
 const parseProfileLimiter = rateLimit({ windowMs: 60 * 1000, max: 15 });
 const pdfReportLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 }); // NEW FEATURE: PDF generation is heavier than a JSON response, so a tighter cap than /api/match
+const qrCodeLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 }); // NEW FEATURE: QR rendering is cheap, but still capped like every other write-ish endpoint
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -313,6 +315,29 @@ app.post("/api/report/pdf", pdfReportLimiter, (req, res) => {
   })();
 });
 
+// POST /api/qrcode — NEW FEATURE. Renders a QR code PNG for a short piece
+// of text — in practice, a link back into this app carrying a citizen's own
+// answers (see the "Share via QR" button in public/index.html), so someone
+// else can scan it, land on the same form pre-filled, and check for
+// themselves. See qrcode-report.js: this route has no opinion about what
+// the text means and never touches the rule engine or an AI provider.
+app.post("/api/qrcode", qrCodeLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { text } = req.body || {};
+      if (typeof text !== "string" || !text.trim()) {
+        return res.status(400).json({ error: "text is required." });
+      }
+      const png = await buildQrCodePng(text);
+      res.setHeader("Content-Type", "image/png");
+      res.send(png);
+    } catch (err) {
+      console.error("POST /api/qrcode failed:", err);
+      res.status(500).json({ error: "Could not generate a QR code right now." });
+    }
+  })();
+});
+
 // GET /api/stats — aggregate, anonymised numbers only. This is the seed of
 // the "how would this work at scale" story: which occupations and states are
 // asking, and how many schemes people typically qualify for but likely never
@@ -402,10 +427,10 @@ app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ error: "Something went wrong on our end." });
 });
-
+ 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Am I Eligible? backend running on port ${PORT}`));
-
+ 
 // Data-minimisation: run the retention purge on boot and once a day after
 // that, so anonymous submission rows don't accumulate indefinitely. A real
 // deployment would use a proper scheduled job (cron, a queue, etc.) instead
@@ -413,4 +438,11 @@ app.listen(PORT, () => console.log(`Am I Eligible? backend running on port ${POR
 // demonstrate the retention policy actually runs, not a production scheduler.
 try {
   const purged = purgeOldSubmissions();
-  if (purged) console.log(`Startup retention purge: removed ${purged} submission row(s) past the
+  if (purged) console.log(`Startup retention purge: removed ${purged} submission row(s) past the retention window.`);
+} catch (err) {
+  console.error("Startup retention purge failed:", err);
+}
+setInterval(() => {
+  try { purgeOldSubmissions(); } catch (err) { console.error("Scheduled retention purge failed:", err); }
+}, 24 * 60 * 60 * 1000);
+ 
