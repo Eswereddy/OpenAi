@@ -19,6 +19,7 @@
 const { generateText, hasProvider } = require("./ai-provider");
 const aiCache = require("./ai-cache");
 const PLAN_CACHE_TTL_MS = 15 * 60 * 1000;
+const LANGUAGE_NAME = { en: "English", hi: "Hindi", te: "Telugu" };
 
 // Pull out exactly what the rule engine already flagged as "worth doing"
 // for this profile: pending-verification items to confirm, and near-miss /
@@ -67,7 +68,7 @@ function buildPrompt(profile, items, eligibleCount, language) {
     `they're pending on, and gaps that — if resolved — could unlock schemes they're currently missing. ` +
     `Turn this into a short, prioritized action plan: at most 5 numbered steps, each one short sentence, ` +
     `plain language, most impactful/easiest first. Do not invent any action, document, or scheme beyond what's listed. ` +
-    `No headings, no markdown, just a numbered list. Respond in ${language === "hi" ? "Hindi" : "English"}.\n\n` +
+    `No headings, no markdown, just a numbered list. Respond in ${LANGUAGE_NAME[language] || "English"}.\n\n` +
     `Citizen profile: ${profileLine || "not provided"}\n\n` +
     `Flagged items:\n${itemLines}`;
 }
@@ -78,16 +79,16 @@ function buildPrompt(profile, items, eligibleCount, language) {
 function templatePlan(items, eligibleCount, language) {
   if (!items.length) {
     if (eligibleCount > 0) {
-      return language === "hi"
-        ? "फ़िलहाल कोई और कार्रवाई ज़रूरी नहीं — जो योजनाएँ मिली हैं उनके लिए ऊपर दिए गए पोर्टल लिंक से आवेदन करें।"
-        : "No further action items right now — go ahead and apply to your matched schemes above using the portal links on each card.";
+      if (language === "hi") return "फ़िलहाल कोई और कार्रवाई ज़रूरी नहीं — जो योजनाएँ मिली हैं उनके लिए ऊपर दिए गए पोर्टल लिंक से आवेदन करें।";
+      if (language === "te") return "ప్రస్తుతం ఇంకేమీ చేయాల్సిన అవసరం లేదు — పైన కనిపించిన పథకాలకు అక్కడి పోర్టల్ లింక్ ద్వారా దరఖాస్తు చేసుకోండి.";
+      return "No further action items right now — go ahead and apply to your matched schemes above using the portal links on each card.";
     }
-    return language === "hi"
-      ? "इस प्रोफ़ाइल के लिए फ़िलहाल कोई सुझाव नहीं है। ऊपर अपने उत्तर बदलकर दोबारा जाँच करें।"
-      : "No specific next steps for this profile right now. Try adjusting a detail above and checking again.";
+    if (language === "hi") return "इस प्रोफ़ाइल के लिए फ़िलहाल कोई सुझाव नहीं है। ऊपर अपने उत्तर बदलकर दोबारा जाँच करें।";
+    if (language === "te") return "ఈ ప్రొఫైల్‌కు ప్రస్తుతం సూచనలు లేవు. పైన మీ వివరాలు మార్చి మళ్ళీ చూడండి.";
+    return "No specific next steps for this profile right now. Try adjusting a detail above and checking again.";
   }
   const lines = items.slice(0, 5).map((it, i) => `${i + 1}. ${it.text}`);
-  const intro = language === "hi" ? "अगले कदम:" : "Next steps:";
+  const intro = language === "hi" ? "अगले कदम:" : language === "te" ? "తదుపరి చర్యలు:" : "Next steps:";
   return `${intro}\n${lines.join("\n")}`;
 }
 
