@@ -55,7 +55,7 @@ function buildPrompt(profile, matchSummaries, language) {
     `what they likely qualify for and what to do first. Be encouraging but never overstate certainty — ` +
     `use "likely" / "worth checking" language for anything marked "needs verification". ` +
     `Do not invent any scheme, benefit amount, or eligibility reason beyond what's listed below. ` +
-    `Respond in ${language === "hi" ? "Hindi" : "English"}.\n\n` +
+    `Respond in ${{ hi: "Hindi", te: "Telugu" }[language] || "English"}.\n\n` +
     `Citizen profile: ${profileLine || "not provided"}\n\n` +
     `Matched schemes:\n${schemeLines}`;
 }
@@ -64,9 +64,9 @@ function buildPrompt(profile, matchSummaries, language) {
 // call fails — never blocks the citizen from seeing a useful summary.
 function templateSummary(matchSummaries, language) {
   if (!matchSummaries.length) {
-    return language === "hi"
-      ? "इस प्रोफ़ाइल के लिए फ़िलहाल कोई योजना नहीं मिली। ऊपर अपने उत्तर बदलकर दोबारा जाँच करें।"
-      : "No schemes matched this profile from today's answers. Try adjusting a detail above and checking again.";
+    if (language === "hi") return "इस प्रोफ़ाइल के लिए फ़िलहाल कोई योजना नहीं मिली। ऊपर अपने उत्तर बदलकर दोबारा जाँच करें।";
+    if (language === "te") return "ఈ ప్రొఫైల్‌కు ప్రస్తుతం ఏ పథకమూ సరిపోలలేదు. పైన మీ వివరాలు మార్చి మళ్ళీ చూడండి.";
+    return "No schemes matched this profile from today's answers. Try adjusting a detail above and checking again.";
   }
   const top = matchSummaries[0];
   const count = matchSummaries.length;
@@ -74,6 +74,11 @@ function templateSummary(matchSummaries, language) {
     return `आपके उत्तरों के आधार पर आप ${count} योजना${count === 1 ? "" : "ओं"} के लिए उपयुक्त हो सकते हैं। ` +
       `सबसे पहले "${top.name}" देखें${top.benefit ? ` (लाभ: ${top.benefit})` : ""} — ` +
       `नीचे दिए गए कार्ड में पूरी जानकारी और आवेदन का तरीका है।`;
+  }
+  if (language === "te") {
+    return `మీ సమాధానాల ఆధారంగా మీరు ${count} పథకా${count === 1 ? "నికి" : "లకు"} అర్హులు కావచ్చు. ` +
+      `మొదట "${top.name}" చూడండి${top.benefit ? ` (ప్రయోజనం: ${top.benefit})` : ""} — ` +
+      `కింద ఉన్న కార్డులో పూర్తి వివరాలు మరియు దరఖాస్తు విధానం ఉన్నాయి.`;
   }
   return `Based on your answers, you may qualify for ${count} scheme${count === 1 ? "" : "s"}. ` +
     `Start with "${top.name}"${top.benefit ? ` (benefit: ${top.benefit})` : ""} — ` +
