@@ -1,0 +1,15 @@
+{
+  "name": "Am I Eligible? — Welfare Scheme Checker",
+  "short_name": "Am I Eligible?",
+  "description": "Find which Indian government welfare schemes you likely qualify for, in English, Hindi, or Telugu — works even with no signal.",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F6F1E4",
+  "theme_color": "#145850",
+  "lang": "en",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
