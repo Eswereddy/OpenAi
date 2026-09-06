@@ -307,6 +307,14 @@ async function main() {
     check("GET /api/ping returns 200", pingRes.status === 200);
     check("ping response includes a timestamp", typeof pingBody.t === "number");
 
+    // An unknown /api/* path must return clean JSON, never an HTML 404 page
+    // — a fetch() call in the frontend should never have to sniff a body to
+    // know a JSON call failed.
+    const unknownApiRes = await fetch(`${BASE}/api/does-not-exist`);
+    const unknownApiBody = await unknownApiRes.json();
+    check("unknown /api/* route returns JSON 404", unknownApiRes.status === 404 && (unknownApiRes.headers.get("content-type") || "").includes("application/json"));
+    check("unknown /api/* route has an error message", typeof unknownApiBody.error === "string" && unknownApiBody.error.length > 0);
+
     // GET /api/schemes — every scheme must carry a Central/State level tag
     const allSchemes = schemesBody.schemes || [];
     check("every scheme has a non-empty level field", allSchemes.length > 0 && allSchemes.every((s) => typeof s.level === "string" && s.level.length > 0));
