@@ -125,6 +125,9 @@ const PORTALS = {
   "rythu-bharosa-ts":   { name: "Rythu Bharosa (Telangana) Portal", url: "https://rythubharosa.telangana.gov.in/" },
   "aasara-pension-ts":  { name: "Aasara Pension (Telangana) Portal", url: "https://aasara.telangana.gov.in/" },
   "kalyana-lakshmi-shaadi-mubarak": { name: "Kalyana Lakshmi / Shaadi Mubarak Portal", url: "https://telanganaepass.cgg.gov.in/" },
+  pmjdy:                { name: "PMJDY Portal",                   url: "https://pmjdy.gov.in/" },
+  rvy:                  { name: "Rashtriya Vayoshri Yojana Portal", url: "https://scw.dosje.gov.in/rashtriya-vayoshri-yojana" },
+  annapurna:            { name: "NSAP Portal",                    url: "https://nsap.nic.in/" },
 };
 
 // Provenance for each scheme's data — kept separate from SCHEMES (like
@@ -173,6 +176,9 @@ const VERIFICATION_BASE = {
   "rythu-bharosa-ts":   { sourceAuthority: "Government of Telangana, Dept. of Agriculture", sourceNote: "Web-verified against current scheme guidance, 2026-09-06", lastVerified: "2026-09-06", version: 1 },
   "aasara-pension-ts":  { sourceAuthority: "Government of Telangana, Social Welfare Dept.", sourceNote: "Web-verified — reported pension amounts vary noticeably across sources at time of writing; treat the figure as approximate", lastVerified: "2026-09-06", version: 1 },
   "kalyana-lakshmi-shaadi-mubarak": { sourceAuthority: "Government of Telangana, Women Development & Child Welfare / Minority Welfare Depts.", sourceNote: "Web-verified against current scheme guidance, 2026-09-06", lastVerified: "2026-09-06", version: 1 },
+  pmjdy:                { sourceAuthority: "Dept. of Financial Services, Ministry of Finance", sourceNote: "Web-verified against current scheme guidance, 2026-09-06", lastVerified: "2026-09-06", version: 1 },
+  rvy:                  { sourceAuthority: "Ministry of Social Justice & Empowerment", sourceNote: "Web-verified against official scheme guidelines (scw.dosje.gov.in), 2026-09-06", lastVerified: "2026-09-06", version: 1 },
+  annapurna:            { sourceAuthority: "Ministry of Rural Development (NSAP)", sourceNote: "Web-verified against current scheme guidance, 2026-09-06", lastVerified: "2026-09-06", version: 1 },
 };
 // Merge in sourceUrl from PORTALS once here, rather than typing every URL a
 // second time — one fewer place the two can drift apart.
@@ -542,6 +548,61 @@ const SCHEMES = [
       return result("needs_verification", ["Gender: Female", "State: Telangana", "Age 18+", "Household income within the range this scheme often covers"],
         ["Only relevant if a marriage is being planned or has recently taken place — applications are typically due within a few months of the marriage date, so apply promptly through telanganaepass.cgg.gov.in.",
          "Kalyana Lakshmi covers SC/ST/BC/EBC brides; Shaadi Mubarak covers minority-community brides — same amount, different department."]);
+    }},
+
+  // ---------------------------------------------------------------------
+  // Batch 2, added 2026-09-06 — central schemes, nationwide.
+  // ---------------------------------------------------------------------
+  { id: "pmjdy", name: "Pradhan Mantri Jan Dhan Yojana (PMJDY)", dept: "Dept. of Financial Services, Ministry of Finance",
+    benefit: "Zero-balance bank account + RuPay debit card + accident/life insurance cover + overdraft facility (up to ₹10,000 after 6 months of satisfactory operation)",
+    tag: "For any Indian citizen aged 10+ without a bank account",
+    docs: ["Aadhaar card (or any officially valid ID)", "Passport-size photo"],
+    populationRules: [],
+    check: p => {
+      if (p.bankAccount === true) return null; // already banked — not the target population, silently skip rather than mislabel
+      if (p.bankAccount === false) {
+        return result("eligible", ["No existing bank account reported"],
+          ["Open a Basic Savings Bank Deposit Account at any bank branch or Business Correspondent point — no minimum balance is required, and minors aged 10+ can open one through a guardian."]);
+      }
+      return result("insufficient_info", [], ["Let us know whether you currently have a bank account to check this scheme — it's aimed at citizens who don't."]);
+    }},
+  { id: "rvy", name: "Rashtriya Vayoshri Yojana (RVY)", dept: "Ministry of Social Justice & Empowerment",
+    benefit: "Free assisted-living devices (walking sticks, wheelchairs, hearing aids, spectacles, dentures) for age-related disability/infirmity",
+    tag: "For BPL senior citizens aged 60+ with an age-related disability or infirmity",
+    docs: ["Aadhaar card", "BPL certificate / ration card (or proof of receiving IGNOAPS)", "Income certificate (if not BPL)", "Medical certificate for the specific impairment"],
+    populationRules: [{ field: "age", operator: ">=", value: 60 }],
+    check: p => {
+      if (!p.disability) {
+        return result("needs_verification", ["Age 60+"],
+          ["This scheme is specifically for age-related impairments (low vision, hearing loss, missing teeth, or a locomotor disability needing a wheelchair) — let us know if any of these apply to check properly."]);
+      }
+      if (p.hasBplCard) {
+        return result("eligible", ["Age 60+", "Disability/infirmity reported", "BPL card holder"],
+          ["Devices are distributed at government assessment/distribution camps, not on demand — watch for a camp announcement in your district or ask your local social welfare office."]);
+      }
+      if (!incomeKnown(p)) {
+        return result("insufficient_info", ["Age 60+", "Disability/infirmity reported"],
+          ["Add your household income (or confirm you hold a BPL card) — this scheme also accepts a monthly income up to ₹15,000 without a BPL card."]);
+      }
+      if (p.income <= 1.8) { // ₹15,000/month ≈ ₹1.8 lakh/year
+        return result("eligible", ["Age 60+", "Disability/infirmity reported", "Income within the ₹15,000/month threshold"],
+          ["Devices are distributed at government assessment/distribution camps — watch for a camp announcement in your district or ask your local social welfare office."]);
+      }
+      return result("not_eligible", ["Age 60+", "Disability/infirmity reported"],
+        ["Reported income is above the ₹15,000/month (~₹1.8 lakh/year) ceiling this scheme applies without a BPL card."]);
+    }},
+  { id: "annapurna", name: "Annapurna Scheme", dept: "Ministry of Rural Development (NSAP)",
+    benefit: "10 kg free food grains per month",
+    tag: "For destitute senior citizens aged 65+ who qualify for old-age pension but aren't currently receiving one",
+    docs: ["Aadhaar card", "Age proof", "Certificate/declaration of not receiving any old-age pension"],
+    populationRules: [{ field: "age", operator: ">=", value: 65 }],
+    check: p => {
+      // This scheme's entire point is the gap between "qualifies for a
+      // pension" and "actually receives one" — a case this form has no
+      // direct field for, so it can only ever be a lead worth checking,
+      // never a confident "eligible".
+      return result("needs_verification", ["Age 65+"],
+        ["Only applies if you qualify for the old-age pension (IGNOAPS or a state pension scheme) but are not currently receiving one — if you already get a pension, this scheme doesn't apply. Check with your Gram Panchayat or local social welfare office."]);
     }},
 ];
 
