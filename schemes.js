@@ -70,6 +70,17 @@ function result(status, met, watch, action) {
   return { status, reasons: { met, watch: watch || [], action: action || [] } };
 }
 
+// Central vs State classification. Every scheme's `dept` already says who
+// actually runs it ("Ministry of ..." / "Government of <State>"), so this
+// is inferred from that instead of hand-tagging each of the 29 entries —
+// one rule, applied once, right after SCHEMES is defined below.
+function levelFor(dept) {
+  if (!dept) return "Central";
+  if (dept.startsWith("Government of ")) return `State — ${dept.replace("Government of ", "")}`;
+  if (dept === "State BOCW Welfare Board") return "State (administered per-state)";
+  return "Central";
+}
+
 function incomeKnown(p) {
   return Number.isFinite(p.income);
 }
@@ -606,6 +617,10 @@ const SCHEMES = [
     }},
 ];
 
+// Stamp every scheme with level ("Central" or "State — <name>") in one
+// pass, so it never has to be maintained by hand per-entry above.
+SCHEMES.forEach(s => { s.level = levelFor(s.dept); });
+
 // Order matches by how actionable/positive they are: strong matches first,
 // then things worth verifying, then "add more info", then clear misses last.
 const STATUS_ORDER = { eligible: 0, needs_verification: 1, insufficient_info: 2, not_eligible: 3 };
@@ -643,10 +658,10 @@ function matchProfile(rawProfile) {
 }
  
 // Metadata only (no functions) — this is what gets seeded into the database.
-const SCHEME_METADATA = SCHEMES.map(({ id, name, dept, benefit, tag, docs }) => {
+const SCHEME_METADATA = SCHEMES.map(({ id, name, dept, benefit, tag, docs, level }) => {
   const v = VERIFICATION[id] || {};
   return {
-    id, name, dept, benefit, tag, docs,
+    id, name, dept, benefit, tag, docs, level,
     portalName: (PORTALS[id] && PORTALS[id].name) || null,
     portalUrl: (PORTALS[id] && PORTALS[id].url) || null,
     sourceAuthority: v.sourceAuthority || dept || null,
@@ -732,5 +747,5 @@ function explainScheme(schemeId) {
  
 module.exports = {
   SCHEMES, SCHEME_METADATA, PORTALS, VERIFICATION, matchProfile, STATUS_ORDER,
-  describeRule, explainScheme, FIELD_LABELS,
+  describeRule, explainScheme, FIELD_LABELS, levelFor,
 };
