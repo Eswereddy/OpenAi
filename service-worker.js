@@ -13,7 +13,7 @@
 // data), and safe to skip entirely — nothing else in the app depends on the
 // service worker being registered.
 
-const CACHE_NAME = "am-i-eligible-v1";
+const CACHE_NAME = "am-i-eligible-v2";
 const APP_SHELL = ["/", "/index.html", "/manifest.json", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -55,17 +55,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // App shell / static assets: cache-first, refresh in the background.
+  // App shell / static assets: network-first, so a fresh deploy is visible
+  // immediately to anyone online. Cache is now purely the offline fallback
+  // (and gets refreshed on every successful network hit), matching the
+  // strategy already used for /api/ above.
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        return res;
+      })
+      .catch(() => caches.match(request))
   );
 });
