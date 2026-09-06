@@ -601,6 +601,15 @@ app.get("/api/ping", (req, res) => res.json({ ok: true, t: Date.now() }));
 
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 
+// Any /api/* path that didn't match a route above (typo, a removed
+// endpoint, a stray request from an old cached client) gets a clean JSON
+// 404 instead of falling through to express.static's HTML 404 page — a
+// fetch() call in the frontend should never have to sniff an HTML body to
+// know a JSON call failed.
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "Unknown API endpoint." });
+});
+
 // Catches body-parser failures (malformed JSON, a body over the 50kb limit)
 // and anything else thrown/next(err)'d in a route above. Express's own
 // default error handler would otherwise return an HTML page with a full
@@ -620,6 +629,21 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Something went wrong on our end." });
 });
  
+// Demo-day safety net: every route above already wraps its own async work
+// in try/catch, but a bug in a dependency (an AI provider SDK, better-sqlite3,
+// pdfkit) could still throw or reject somewhere that isn't. Node's default
+// behavior for an uncaught exception is to crash the whole process — fine
+// for a background script, fatal for a live judged demo where a restart
+// means a black screen mid-pitch. Logging and carrying on is the right
+// trade-off here: a citizen's *next* request still gets served even if one
+// odd request upstream misbehaved.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Am I Eligible? backend running on port ${PORT}`));
  
@@ -637,4 +661,3 @@ try {
 setInterval(() => {
   try { purgeOldSubmissions(); } catch (err) { console.error("Scheduled retention purge failed:", err); }
 }, 24 * 60 * 60 * 1000);
- 
