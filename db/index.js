@@ -12,6 +12,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     dept TEXT,
+    level TEXT,
     benefit TEXT,
     tag TEXT,
     docs TEXT,
@@ -67,6 +68,10 @@ for (const stmt of [
   "ALTER TABLE schemes ADD COLUMN source_url TEXT",
   "ALTER TABLE schemes ADD COLUMN last_verified TEXT",
   "ALTER TABLE schemes ADD COLUMN version INTEGER DEFAULT 1",
+  // Central vs State classification (see schemes.js's levelFor()) — added
+  // after the original table shape, so existing DBs need the column added
+  // explicitly, same as portal_name/portal_url above.
+  "ALTER TABLE schemes ADD COLUMN level TEXT",
   // Older DBs from before this fix stored an exact "age" and a raw
   // (mislabeled) "income_band" value. This adds the real bucketed column;
   // the pre-existing income_band column is reused as-is below — SQLite's
@@ -79,9 +84,10 @@ for (const stmt of [
 function seedSchemesIfEmpty() {
   const { c } = db.prepare("SELECT COUNT(*) AS c FROM schemes").get();
   const insert = db.prepare(`
-    INSERT INTO schemes (id, name, dept, benefit, tag, docs, portal_name, portal_url, source_authority, source_note, source_url, last_verified, version)
-    VALUES (@id, @name, @dept, @benefit, @tag, @docs, @portalName, @portalUrl, @sourceAuthority, @sourceNote, @sourceUrl, @lastVerified, @version)
+    INSERT INTO schemes (id, name, dept, level, benefit, tag, docs, portal_name, portal_url, source_authority, source_note, source_url, last_verified, version)
+    VALUES (@id, @name, @dept, @level, @benefit, @tag, @docs, @portalName, @portalUrl, @sourceAuthority, @sourceNote, @sourceUrl, @lastVerified, @version)
     ON CONFLICT(id) DO UPDATE SET
+      level            = excluded.level,
       portal_name      = excluded.portal_name,
       portal_url       = excluded.portal_url,
       -- Only backfill provenance fields when the row doesn't already have
@@ -110,7 +116,7 @@ seedSchemesIfEmpty();
 function getAllSchemes() {
   return db
     .prepare(`
-      SELECT id, name, dept, benefit, tag, docs,
+      SELECT id, name, dept, level, benefit, tag, docs,
              portal_name AS portalName, portal_url AS portalUrl,
              source_authority AS sourceAuthority, source_note AS sourceNote,
              source_url AS sourceUrl, last_verified AS lastVerified, version
