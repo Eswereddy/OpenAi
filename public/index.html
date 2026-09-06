@@ -475,6 +475,16 @@
   .mode-pill.live{ background:#E3F0EA; color:var(--teal-deep); }
   .mode-pill.offline{ background:#F6E6D8; color:var(--marigold-deep); }
   .mode-pill::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  /* Central vs State badge on each result card — same color language as
+     .mode-pill above (teal = national/default, marigold = regional), so a
+     citizen with several matches can tell at a glance which office actually
+     administers each one before reading the card. */
+  .level-pill{
+    display:inline-block; font-size:11px; font-family:"IBM Plex Mono", monospace; font-weight:600;
+    border-radius:20px; padding:2px 10px; margin-bottom:6px; margin-left:6px;
+  }
+  .level-pill--central{ background:#E3F0EA; color:var(--teal-deep); }
+  .level-pill--state{ background:#F6E6D8; color:var(--marigold-deep); }
 
   #results{ display:grid; gap:16px; }
   .empty-note{
@@ -1827,6 +1837,15 @@ window.LOCAL_SCHEMES = (function(){
     return `Some conditions vary by state — verify with your local office.`;
   }
   function result(status, met, watch, action){ return {status, reasons:{met, watch:watch||[], action:action||[]}}; }
+  // Mirrors levelFor() in schemes.js — Central vs State classification,
+  // inferred from dept the same way on both sides so the offline and live
+  // journeys always agree.
+  function levelFor(dept){
+    if(!dept) return "Central";
+    if(dept.startsWith("Government of ")) return `State — ${dept.replace("Government of ", "")}`;
+    if(dept === "State BOCW Welfare Board") return "State (administered per-state)";
+    return "Central";
+  }
   // Mirrors PORTALS in schemes.js — where to actually act on a result.
   // Not every scheme has one self-service national portal (BOCW is
   // administered per-state), so url can be null.
@@ -2001,6 +2020,7 @@ window.LOCAL_SCHEMES = (function(){
         const met=[]; if(["SC","ST"].includes(p.category)) met.push(`Category: ${p.category}`); if(p.gender==="Female") met.push("Gender: Female");
         return result("needs_verification",met,["Meant for a first-time (\"greenfield\") non-farm enterprise — at least one branch of every scheduled commercial bank is mandated to extend one such loan. Approach your nearest bank branch with a project report to confirm."]); }},
   ].map(s => Object.assign(s, {
+    level: levelFor(s.dept),
     portalName: (PORTALS[s.id]||{}).name || null,
     portalUrl: (PORTALS[s.id]||{}).url || null,
     sourceAuthority: (VERIFICATION[s.id]||{}).sourceAuthority || s.dept || null,
@@ -2226,6 +2246,17 @@ function statusPill(status, almost){
   return `<span class="status-pill" style="border-color:${meta.color}; color:${meta.color};">${meta.dot} ${meta.label} · ${meta.sub}</span>`;
 }
 
+// Central vs State badge — next to the status pill on every result card.
+// `scheme.level` comes straight from schemes.js's levelFor(dept) (via the
+// API) or, offline, from the same classification mirrored below for
+// LOCAL_SCHEMES — so a scheme never has to be tagged by hand twice.
+function levelPill(scheme){
+  const level = (scheme && scheme.level) || "Central";
+  const isState = level.startsWith("State");
+  const label = isState ? level.replace(/^State\s*—\s*/, "State: ").replace(/^State \(/, "State (") : "🏛️ Central";
+  return `<span class="level-pill ${isState ? "level-pill--state" : "level-pill--central"}">${isState ? "📍 " : ""}${escapeHTML(label)}</span>`;
+}
+
 // ---------- load scheme catalog (live, with offline fallback) ----------
 let CATALOG = [];
 let CATALOG_BY_ID = {};
@@ -2246,7 +2277,7 @@ fetchWithTimeout("/api/schemes", {}, 3000)
     if(typeof renderSchemeSpotlight === "function") renderSchemeSpotlight();
   })
   .catch(() => {
-    CATALOG = (window.LOCAL_SCHEMES || []).map(s => ({id:s.id, name:s.name, dept:s.dept, benefit:s.benefit, tag:s.tag, docs:s.docs, portalName:s.portalName, portalUrl:s.portalUrl, sourceAuthority:s.sourceAuthority, sourceNote:s.sourceNote, sourceUrl:s.sourceUrl, lastVerified:s.lastVerified, version:s.version, criteria:s.criteria}));
+    CATALOG = (window.LOCAL_SCHEMES || []).map(s => ({id:s.id, name:s.name, dept:s.dept, level:s.level, benefit:s.benefit, tag:s.tag, docs:s.docs, portalName:s.portalName, portalUrl:s.portalUrl, sourceAuthority:s.sourceAuthority, sourceNote:s.sourceNote, sourceUrl:s.sourceUrl, lastVerified:s.lastVerified, version:s.version, criteria:s.criteria}));
     CATALOG.forEach(s => CATALOG_BY_ID[s.id] = s);
     document.getElementById("schemeCountBadge").textContent = CATALOG.length + " schemes currently indexed (offline copy)";
     renderCatalog();
@@ -3893,6 +3924,7 @@ function renderResults(matches, usedFallback){
       <div class="result-card" data-scheme-id="${escapeHTML(m.id)}" data-status="${escapeHTML(m.status)}">
         <div class="stamp">${stampSVG(m.status, almost)}</div>
         ${statusPill(m.status, almost)}
+        ${levelPill(scheme)}
         <h3>${escapeHTML(name)}</h3>
         ${benefit ? `<p class="benefit">${escapeHTML(String(benefit))}</p>` : ""}
         ${desc ? `<p class="desc">${escapeHTML(String(desc))}</p>` : ""}
