@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node smoke.js"
+    "test": "npm run test:unit && npm run test:smoke",
+    "test:unit": "node --test",
+    "test:smoke": "node smoke.js"
   },
   "engines": {
     "node": "20.x"
