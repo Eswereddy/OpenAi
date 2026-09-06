@@ -14,9 +14,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { evaluateRule, evaluateRules } = require("../rule-engine");
-const { sanitizeProfile } = require("../validate");
-const { levelFor, SCHEMES } = require("../schemes");
+const { evaluateRule, evaluateRules } = require("./rule-engine");
+const { sanitizeProfile } = require("./validate");
+const { levelFor, SCHEMES } = require("./schemes");
 
 test("rule-engine: equals / != operators", () => {
   assert.equal(evaluateRule({ occupation: "Farmer" }, { field: "occupation", operator: "equals", value: "Farmer" }), true);
