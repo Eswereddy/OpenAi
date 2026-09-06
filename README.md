@@ -10,8 +10,10 @@ applicants. **This app collapses that into one 2-minute conversation.**
 
 Answer a short, occupation-aware questionnaire (or just describe yourself
 in one sentence and let AI fill the form for you) and get back which of
-**21** real, well-known central schemes you likely qualify for — in plain
-language, with a reason for every match, in **English, Hindi, or Telugu**.
+**29** real, well-known central *and state* schemes you likely qualify
+for — in plain language, tagged Central or State so you know who to
+actually contact, with a reason for every match, in **English, Hindi, or
+Telugu**.
 
 At a glance:
 - **5 real AI touchpoints** chained into one journey — not a bolted-on
@@ -93,8 +95,13 @@ server.js            Express API: GET /api/schemes, POST /api/match,
                       POST /api/checklist, POST /api/parse-profile,
                       GET /api/stats, GET /api/schemes/:id/why,
                       POST /api/schemes/:id/verify.
-test/smoke.js         Zero-dependency smoke test hitting every endpoint
-                      against a real running server. `npm test`.
+smoke.js             Zero-dependency integration test: boots the real
+                      server and hits every endpoint over HTTP.
+test/unit.test.js    Unit tests (Node's built-in test runner, no new
+                      dependency) for the pure logic — rule-engine.js's
+                      operators, validate.js's sanitizer, and the
+                      Central/State classifier — with no server or DB
+                      involved. `npm test` runs both suites.
 ```
 
 ## AI integration
@@ -346,6 +353,32 @@ scheme's own `check()` function, the same pattern the existing BOCW scheme
 already uses for its extra fields — not a new engine capability, just the
 existing "population rules narrow, `check()` does the rest" escape hatch
 used a second time.
+
+## Newest additions — state schemes and Central/State labeling
+
+Eight more schemes, taking total coverage from 21 to **29**, chosen this
+time specifically to close two gaps: **maternity/financial-inclusion
+coverage most citizens qualify for regardless of occupation** (JSY,
+PMJDY, RVY, Annapurna), and **state-run schemes**, previously entirely
+absent — Andhra Pradesh's Annadata Sukhibhava and Telangana's Rythu
+Bharosa, Aasara Pension, and Kalyana Lakshmi/Shaadi Mubarak.
+
+Because roughly a third of the new schemes are state-run, every scheme —
+old and new — is now stamped with a `level` field (`"Central"` or
+`"State — <state name>"`), derived automatically from its `dept` by a
+single `levelFor()` function in `schemes.js` rather than hand-tagged per
+entry. It flows through the database, the API, and shows as a small
+badge (🏛️ Central / 📍 State) on every result card and in the browse-all
+catalog, so a citizen with matches from both levels can tell at a glance
+which office actually administers each one — a state agriculture scheme
+and a central ministry scheme aren't followed up on the same portal, and
+now the app says so up front instead of leaving that to the fine print.
+
+As before, all eight were added as pure data plus a mirrored `check()` in
+`public/index.html`'s offline `LOCAL_SCHEMES` — and this time that parity
+is enforced by an actual regression test (`smoke.js`), not just a
+one-time manual check, after the offline copy was found to have silently
+drifted 8 schemes behind the live one.
 
 ## Run locally
 
