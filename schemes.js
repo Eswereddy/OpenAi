@@ -120,6 +120,11 @@ const PORTALS = {
   pmsvanidhi:           { name: "PM SVANidhi Portal",             url: "https://pmsvanidhi.mohua.gov.in/" },
   pmmudra:              { name: "Mudra Portal",                   url: "https://www.mudra.org.in/" },
   standupindia:         { name: "Stand-Up India Portal",          url: "https://www.standupmitra.in/" },
+  jsy:                  { name: "National Health Mission Portal", url: "https://nhm.gov.in/" },
+  "annadata-sukhibhava": { name: "Annadata Sukhibhava Portal",    url: "https://annadathasukhibhava.ap.gov.in/" },
+  "rythu-bharosa-ts":   { name: "Rythu Bharosa (Telangana) Portal", url: "https://rythubharosa.telangana.gov.in/" },
+  "aasara-pension-ts":  { name: "Aasara Pension (Telangana) Portal", url: "https://aasara.telangana.gov.in/" },
+  "kalyana-lakshmi-shaadi-mubarak": { name: "Kalyana Lakshmi / Shaadi Mubarak Portal", url: "https://telanganaepass.cgg.gov.in/" },
 };
 
 // Provenance for each scheme's data — kept separate from SCHEMES (like
@@ -163,6 +168,11 @@ const VERIFICATION_BASE = {
   pmsvanidhi:           { sourceAuthority: "Ministry of Housing & Urban Affairs",                sourceNote: "Scheme guidelines / official portal", lastVerified: null, version: 1 },
   pmmudra:              { sourceAuthority: "Dept. of Financial Services, Ministry of Finance",   sourceNote: "Scheme guidelines / official portal", lastVerified: null, version: 1 },
   standupindia:         { sourceAuthority: "Dept. of Financial Services, Ministry of Finance",   sourceNote: "Scheme guidelines / official portal", lastVerified: null, version: 1 },
+  jsy:                  { sourceAuthority: "National Health Mission, Ministry of Health & Family Welfare", sourceNote: "Web-verified against current scheme guidance, 2026-09-06", lastVerified: "2026-09-06", version: 1 },
+  "annadata-sukhibhava": { sourceAuthority: "Government of Andhra Pradesh, Dept. of Agriculture", sourceNote: "Web-verified against current scheme guidance (relaunched Aug 2025, replacing YSR Rythu Bharosa), 2026-09-06", lastVerified: "2026-09-06", version: 1 },
+  "rythu-bharosa-ts":   { sourceAuthority: "Government of Telangana, Dept. of Agriculture", sourceNote: "Web-verified against current scheme guidance, 2026-09-06", lastVerified: "2026-09-06", version: 1 },
+  "aasara-pension-ts":  { sourceAuthority: "Government of Telangana, Social Welfare Dept.", sourceNote: "Web-verified — reported pension amounts vary noticeably across sources at time of writing; treat the figure as approximate", lastVerified: "2026-09-06", version: 1 },
+  "kalyana-lakshmi-shaadi-mubarak": { sourceAuthority: "Government of Telangana, Women Development & Child Welfare / Minority Welfare Depts.", sourceNote: "Web-verified against current scheme guidance, 2026-09-06", lastVerified: "2026-09-06", version: 1 },
 };
 // Merge in sourceUrl from PORTALS once here, rather than typing every URL a
 // second time — one fewer place the two can drift apart.
@@ -436,6 +446,103 @@ const SCHEMES = [
       return result("needs_verification", met,
         ["Meant for a first-time (\"greenfield\") non-farm enterprise — at least one branch of every scheduled commercial bank is mandated to extend one such loan. Approach your nearest bank branch with a project report to confirm."]);
     }},
+
+  // ---------------------------------------------------------------------
+  // Batch added 2026-09-06 — first installment toward broader coverage.
+  // Each entry below was checked against current (2026) scheme guidance
+  // via web search before being added; sourceNote in VERIFICATION_BASE
+  // records that. Two of these (Annadata Sukhibhava, Aasara Pension) sit
+  // in AP/Telangana schemes that have changed name, amount, or government
+  // within the last year — a reminder that state-scheme data here needs
+  // periodic re-verification, same as central schemes.
+  // ---------------------------------------------------------------------
+  { id: "jsy", name: "Janani Suraksha Yojana (JSY)", dept: "National Health Mission",
+    benefit: "Cash incentive for institutional delivery — ₹1,400 (rural) / ₹1,000 (urban) in Low Performing States; ₹700 (rural) / ₹600 (urban) for BPL/SC/ST women in High Performing States",
+    tag: "For pregnant women delivering in a government or accredited private hospital",
+    docs: ["Aadhaar card", "JSY / MCP card (given at ANC registration)", "Bank passbook", "BPL/caste certificate, if applicable"],
+    populationRules: [{ field: "gender", operator: "equals", value: "Female" }, { field: "maternity", operator: "equals", value: true }],
+    check: p => {
+      if (incomeKnown(p) && !p.hasBplCard && p.age && p.age >= 19) {
+        // Most states (incl. AP/Telangana) are "High Performing" under JSY,
+        // where the cash incentive is restricted to BPL/SC/ST women — so a
+        // clearly above-BPL income without a BPL card or SC/ST category is
+        // the one case worth a soft "not_eligible" rather than "verify".
+        if (p.income > 3 && !["SC", "ST"].includes(p.category)) {
+          return result("not_eligible", ["Pregnant / recent mother"],
+            ["Most states run JSY as a High-Performing State, where the cash incentive is limited to BPL/SC/ST women — reported income and category don't currently match that."]);
+        }
+      }
+      return result("needs_verification", ["Pregnant / recent mother"],
+        ["Exact amount depends on whether your state is classified Low- or High-Performing under JSY, and (in High-Performing states) on BPL/SC/ST status — ask your ASHA worker or nearest government health facility, ideally before delivery so registration happens in time.",
+         "Age 19+ and up to two live births are standard conditions nationally."]);
+    }},
+  { id: "annadata-sukhibhava", name: "Annadata Sukhibhava", dept: "Government of Andhra Pradesh",
+    benefit: "₹20,000/year per farmer family (₹14,000 state + ₹6,000 central PM-KISAN component), paid in 3 DBT installments",
+    tag: "For small & marginal farmer families in Andhra Pradesh (replaced YSR Rythu Bharosa in Aug 2025)",
+    docs: ["Aadhaar card", "Land record / khatauni (or CCRC card for tenant farmers)", "Bank passbook linked to Aadhaar"],
+    populationRules: [{ field: "occupation", operator: "equals", value: "Farmer" }, { field: "state", operator: "equals", value: "Andhra Pradesh" }],
+    check: p => {
+      if (!p.farmland) {
+        return result("needs_verification", ["Occupation: Farmer", "State: Andhra Pradesh"],
+          ["No farmland reported — but tenant/cultivator farmers holding a CCRC (Crop Cultivator Rights) card are also covered, so this may still apply. Confirm with your Rythu Seva Kendra."]);
+      }
+      return result("needs_verification", ["Occupation: Farmer", "State: Andhra Pradesh", "Owns farmland"],
+        ["This state top-up rides on your PM-KISAN record and is generally capped at holdings under 5 acres — confirm your e-KYC and land records are current at annadathasukhibhava.ap.gov.in or your nearest Rythu Seva Kendra."]);
+    }},
+  { id: "rythu-bharosa-ts", name: "Rythu Bharosa (Telangana)", dept: "Government of Telangana",
+    benefit: "Per-acre seasonal investment support (recently reported around ₹6,000/acre/season) — confirm current rate before relying on a figure",
+    tag: "For landowning and registered tenant farmers in Telangana (successor to Rythu Bandhu)",
+    docs: ["Aadhaar card", "Land record / pattadar passbook (or written tenant lease agreement, for cultivators)", "Bank passbook"],
+    populationRules: [{ field: "occupation", operator: "equals", value: "Farmer" }, { field: "state", operator: "equals", value: "Telangana" }],
+    check: p => {
+      if (!p.farmland) {
+        return result("needs_verification", ["Occupation: Farmer", "State: Telangana"],
+          ["No farmland reported — tenant/cultivating farmers with a verified written lease are also covered as of the 2025-26 rules. Confirm status with your village agriculture assistant."]);
+      }
+      return result("needs_verification", ["Occupation: Farmer", "State: Telangana", "Owns farmland"],
+        ["Benefit is tied to active cultivation, not just land ownership, and the per-acre rate has changed more than once recently — check your name on the beneficiary list at rythubharosa.telangana.gov.in before expecting a specific amount."]);
+    }},
+  { id: "aasara-pension-ts", name: "Aasara Pension (Telangana)", dept: "Government of Telangana",
+    benefit: "Monthly pension for elderly, widowed, or disabled residents — reported amounts vary by source at time of writing (roughly ₹2,000–₹4,000/month by category); confirm the current figure locally",
+    tag: "For elderly (57+), widowed, or disabled Telangana residents, generally from BPL households",
+    docs: ["Aadhaar card", "Age proof", "Bank passbook", "BPL/income certificate", "Disability certificate (SADAREM ID), if applicable"],
+    populationRules: [{ field: "state", operator: "equals", value: "Telangana" }],
+    check: p => {
+      const isOldAge = typeof p.age === "number" && p.age >= 57;
+      const category = [];
+      if (isOldAge) category.push(`Age ${p.age} (57+)`);
+      if (p.widow) category.push("Widow status");
+      if (p.disability) category.push("Disability reported");
+      if (!category.length) return null;
+      if (p.hasBplCard) {
+        return result("eligible", [...category, "BPL card holder"],
+          ["Exact monthly amount depends on your specific category (old-age/widow/disability) — this has been reported inconsistently across sources recently, so confirm the current figure at aasara.telangana.gov.in."]);
+      }
+      if (!incomeKnown(p)) {
+        return result("insufficient_info", category, ["Add your household income (or confirm you hold a BPL/ration card) to check this scheme."]);
+      }
+      return result("needs_verification", category,
+        ["Real determination runs on the BPL/welfare list your local Gram Panchayat or ULB maintains, not a self-reported income figure — verify your name on that list."]);
+    }},
+  { id: "kalyana-lakshmi-shaadi-mubarak", name: "Kalyana Lakshmi / Shaadi Mubarak", dept: "Government of Telangana",
+    benefit: "One-time ₹1,00,116 marriage assistance grant (₹1,25,145 if the bride has a certified disability), paid to the bride's family",
+    tag: "For SC/ST/BC/EBC brides (Kalyana Lakshmi) or minority-community brides (Shaadi Mubarak) in Telangana",
+    docs: ["Bride's Aadhaar card", "Caste/community certificate", "Age proof for bride (18+) and groom (21+)", "Marriage certificate/invitation", "Bride's mother's bank passbook (benefit is paid to this account)"],
+    populationRules: [{ field: "gender", operator: "equals", value: "Female" }, { field: "state", operator: "equals", value: "Telangana" }, { field: "age", operator: ">=", value: 18 }],
+    check: p => {
+      const incomeLimit = p.category === "BC" || p.category === "EBC" ? 1.5 : 2; // rural BC/EBC ceiling is lower per official criteria; treated as the tighter, safer bound here
+      if (!incomeKnown(p)) {
+        return result("insufficient_info", ["Gender: Female", "State: Telangana", "Age 18+"],
+          ["Add your household income to check this scheme (there's an income ceiling that varies slightly by category)."]);
+      }
+      if (p.income > incomeLimit) {
+        return result("not_eligible", ["Gender: Female", "State: Telangana", "Age 18+"],
+          [`Reported income is above the roughly ₹${incomeLimit} lakh/year ceiling this scheme generally applies (varies slightly by category and rural/urban).`]);
+      }
+      return result("needs_verification", ["Gender: Female", "State: Telangana", "Age 18+", "Household income within the range this scheme often covers"],
+        ["Only relevant if a marriage is being planned or has recently taken place — applications are typically due within a few months of the marriage date, so apply promptly through telanganaepass.cgg.gov.in.",
+         "Kalyana Lakshmi covers SC/ST/BC/EBC brides; Shaadi Mubarak covers minority-community brides — same amount, different department."]);
+    }},
 ];
 
 // Order matches by how actionable/positive they are: strong matches first,
@@ -566,4 +673,3 @@ module.exports = {
   SCHEMES, SCHEME_METADATA, PORTALS, VERIFICATION, matchProfile, STATUS_ORDER,
   describeRule, explainScheme, FIELD_LABELS,
 };
- 
