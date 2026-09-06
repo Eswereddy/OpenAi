@@ -306,6 +306,66 @@ async function main() {
     const pingBody = await pingRes.json();
     check("GET /api/ping returns 200", pingRes.status === 200);
     check("ping response includes a timestamp", typeof pingBody.t === "number");
+
+    // GET /api/schemes — every scheme must carry a Central/State level tag
+    const allSchemes = schemesBody.schemes || [];
+    check("every scheme has a non-empty level field", allSchemes.length > 0 && allSchemes.every((s) => typeof s.level === "string" && s.level.length > 0));
+    check("at least one scheme is classified State", allSchemes.some((s) => s.level.startsWith("State")));
+
+    // Offline/live parity — public/index.html bundles its own copy of the
+    // catalog (LOCAL_SCHEMES) for when /api/match can't be reached. Every
+    // scheme id in the live database must also appear in that bundle, or
+    // offline citizens silently see fewer results than online ones (this
+    // caught a real 8-scheme gap once — keep it as a permanent regression
+    // guard, not a one-time check).
+    const indexHtml = fs.readFileSync(path.join(__dirname, "public", "index.html"), "utf8");
+    const localSchemesMatch = indexHtml.match(/window\.LOCAL_SCHEMES = \(function\(\)\{[\s\S]*?\n\}\)\(\);/);
+    const localIds = localSchemesMatch ? [...localSchemesMatch[0].matchAll(/\{\s*id\s*:\s*"([a-z0-9-]+)"/g)].map((m) => m[1]) : [];
+    const missingOffline = allSchemes.map((s) => s.id).filter((id) => !localIds.includes(id));
+    check("every live scheme also exists in the offline LOCAL_SCHEMES bundle", missingOffline.length === 0);
+
+    // POST /api/schemes/reminder-plans — batch version of the single reminder-plan endpoint
+    const reminderPlansRes = await fetch(`${BASE}/api/schemes/reminder-plans`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: ["pmkisan", "pmfby"] }),
+    });
+    const reminderPlansBody = await reminderPlansRes.json();
+    check("POST /api/schemes/reminder-plans returns 200", reminderPlansRes.status === 200);
+    check("reminder-plans returns a plan per requested id", Array.isArray(reminderPlansBody.plans) && reminderPlansBody.plans.length === 2);
+
+    // POST /api/schemes/reminders/bulk.ics — combined calendar file for several matches
+    const bulkIcsRes = await fetch(`${BASE}/api/schemes/reminders/bulk.ics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: [{ schemeId: "pmkisan", schemeName: "PM-KISAN", statusLabel: "Likely eligible" }] }),
+    });
+    const bulkIcsBody = await bulkIcsRes.text();
+    check("POST /api/schemes/reminders/bulk.ics returns 200", bulkIcsRes.status === 200);
+    check("bulk.ics is a valid VCALENDAR", bulkIcsBody.includes("BEGIN:VCALENDAR") && bulkIcsBody.includes("SUMMARY:Follow up: PM-KISAN"));
+
+    // POST /api/qrcode — QR code PNG for sharing a result
+    const qrRes = await fetch(`${BASE}/api/qrcode`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "https://example.com/?ref=test" }),
+    });
+    const qrBuf = Buffer.from(await qrRes.arrayBuffer());
+    check("POST /api/qrcode returns 200", qrRes.status === 200);
+    check("qrcode response is a PNG", qrBuf.length > 8 && qrBuf[0] === 0x89 && qrBuf.slice(1, 4).toString() === "PNG");
+
+    // POST /api/summary — falls back to a deterministic template with no AI key configured
+    const summaryRes = await fetch(`${BASE}/api/summary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profile: { age: 40, occupation: "Farmer", farmland: true },
+        matches: [{ id: "pmkisan", status: "eligible", reasons: { met: ["Occupation: Farmer"], watch: [], action: [] } }],
+      }),
+    });
+    const summaryBody = await summaryRes.json();
+    check("POST /api/summary returns 200", summaryRes.status === 200);
+    check("summary response has non-empty text", typeof summaryBody.summary === "string" && summaryBody.summary.length > 0);
   } finally {
     server.kill();
     try { fs.unlinkSync(DB_PATH); } catch (_) { /* fine */ }
