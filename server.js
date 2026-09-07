@@ -21,6 +21,7 @@ const { buildEligibilityReportPdf } = require("./pdf-report"); // NEW FEATURE: d
 const { buildQrCodePng } = require("./qrcode-report"); // NEW FEATURE: QR code share/resume link
 const { computeImpact } = require("./impact-stats"); // NEW FEATURE: homepage live impact ticker
 const { buildReminderIcs, buildBulkReminderIcs, planFor } = require("./reminder"); // NEW FEATURE: "remind me later" calendar file per scheme; planFor is also reused by the priority-roadmap timeline below, buildBulkReminderIcs by the "remind me about all" button
+const { investigate } = require("./eligibility-agent"); // NEW FEATURE: multi-step, tool-using AI agent — see eligibility-agent.js
 
 // Minimal local-dev .env loader — no dependency added, matches this repo's
 // "as few dependencies as the task actually needs" style. Only fills in
@@ -99,6 +100,10 @@ const pdfReportLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 }); // NEW FEA
 const qrCodeLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 }); // NEW FEATURE: QR rendering is cheap, but still capped like every other write-ish endpoint
 const feedbackLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 }); // NEW FEATURE: cheap write, but still capped like every other write-ish endpoint
 const reminderLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 }); // NEW FEATURE: generating a tiny text file is cheap, but capped like every other route
+// Tighter than the other AI limiters: each question can drive up to
+// MAX_STEPS model calls (a real multi-step loop), so it's the most
+// expensive single request in the app per hit.
+const agentLimiter = rateLimit({ windowMs: 60 * 1000, max: 8 });
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -232,6 +237,40 @@ app.post("/api/action-plan", actionPlanLimiter, (req, res) => {
     } catch (err) {
       console.error("POST /api/action-plan failed:", err);
       res.status(500).json({ error: "Could not generate an action plan." });
+    }
+  })();
+});
+
+// POST /api/agent — the real multi-step AI agent. Unlike every other AI
+// route above (one prompt in, one reply out), this runs an actual
+// tool-calling loop: the model decides which of a small set of read-only
+// tools to call against this citizen's OWN match data, gets a real result
+// back, and can call another tool before finally answering — see
+// eligibility-agent.js for the loop and the exact tools. The response
+// includes `trace`, the step-by-step record of what the agent looked up,
+// so the client can show its work instead of an opaque final paragraph.
+app.post("/api/agent", agentLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { question, matches, language } = req.body || {};
+      if (typeof question !== "string" || !question.trim()) {
+        return res.status(400).json({ error: "question is required." });
+      }
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { reply, trace, source } = await investigate({
+        question: question.slice(0, 500),
+        matches,
+        catalogById,
+        language: ["hi", "te"].includes(language) ? language : "en",
+      });
+      res.json({ reply, trace, source });
+    } catch (err) {
+      console.error("POST /api/agent failed:", err);
+      res.status(500).json({ error: "The AI agent couldn't investigate that just now — please try again." });
     }
   })();
 });
