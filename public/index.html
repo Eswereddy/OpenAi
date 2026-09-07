@@ -913,6 +913,55 @@
   .checklist-item-for{ font-size:11.5px; color:var(--ink-soft); margin:0 0 5px; }
   .checklist-item-tip{ font-size:12.5px; color:var(--ink); margin:0; }
 
+  /* AI Investigator — the multi-step tool-using agent. Its own accent
+     (deep marigold) so it visually reads as a distinct, more powerful
+     touchpoint from the single-shot action-plan/checklist panels above. */
+  .agent-panel.investigator-panel{
+    background: linear-gradient(180deg, rgba(196,131,42,0.08), transparent);
+    border-color: var(--marigold-deep);
+  }
+  .investigator-panel .agent-panel-icon{ background: var(--marigold-deep); }
+  .investigator-ask-row{ display:flex; gap:8px; margin: 4px 0 12px; flex-wrap:wrap; }
+  .investigator-ask-row input[type="text"]{
+    flex:1; min-width:180px; font: inherit; font-size:13.5px;
+    padding: 8px 12px; border:1.3px solid var(--ink); border-radius: var(--radius);
+    background: var(--card); color: var(--ink);
+  }
+  .investigator-ask-row button{
+    font: inherit; font-size:13px; font-weight:700; padding: 8px 16px;
+    border-radius: var(--radius); border:1.3px solid var(--marigold-deep);
+    background: var(--marigold-deep); color:#fff; cursor:pointer;
+  }
+  .investigator-ask-row button:disabled{ opacity:0.6; cursor:default; }
+  .investigator-chips{ display:flex; flex-wrap:wrap; gap:6px; margin: 0 0 12px; }
+  .investigator-chip{
+    font-family:"IBM Plex Mono", monospace; font-size:11px; padding:4px 10px;
+    border:1px solid var(--line); border-radius:999px; background:var(--card);
+    color: var(--ink-soft); cursor:pointer;
+  }
+  .investigator-chip:hover{ border-color: var(--marigold-deep); color: var(--ink); }
+  .investigator-trace{
+    margin: 10px 0 0; padding: 0; list-style:none;
+    border-top: 1px dashed var(--line); padding-top: 10px;
+  }
+  .investigator-trace-item{
+    font-size: 12px; color: var(--ink-soft); margin: 0 0 8px;
+    padding-left: 18px; position:relative;
+  }
+  .investigator-trace-item::before{
+    content: "→"; position:absolute; left:0; color: var(--marigold-deep); font-weight:700;
+  }
+  .investigator-trace-tool{
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; font-weight:700;
+    color: var(--teal-deep); text-transform:uppercase; letter-spacing:0.04em;
+  }
+  .investigator-toggle-trace{
+    background:none; border:none; padding:0; margin: 8px 0 0;
+    font-family:"IBM Plex Mono", monospace; font-size:11px; color: var(--teal-deep);
+    text-decoration: underline; cursor:pointer;
+  }
+  .investigator-answer{ margin: 0 0 4px; }
+
   /* Confidence line: a plain, honest count of what lined up vs. what still
      needs a human/official to confirm — not a percentage or score, since
      this is a rules match, not a statistical prediction. */
@@ -1751,10 +1800,12 @@
     <button class="toggle-link" id="remindAllBtn" type="button">🔔 Remind me about all of these</button>
   </div>
   <div id="progressSummary" class="no-print"></div>
+  <div id="benefitHeadline" class="no-print"></div>
   <div id="aiSummary"></div>
   <div id="incomeSimulator"></div>
   <div id="agentButtonRow" class="no-print" style="display:none; gap:10px; margin:-6px 0 16px; flex-wrap:wrap;">
     <button class="agent-btn" id="actionPlanBtn" type="button">🧭 What should I do next?</button>
+    <button class="agent-btn" id="investigatorBtn" type="button">🔎 Ask the AI Investigator</button>
     <button class="agent-btn" id="roadmapBtn" type="button">🗓️ My priority roadmap</button>
     <button class="agent-btn" id="checklistBtn" type="button">📋 Build my document checklist</button>
     <button class="agent-btn" id="pdfReportBtn" type="button">📄 Download PDF eligibility summary</button>
@@ -1763,6 +1814,7 @@
   </div>
   <div id="qrSharePanel"></div>
   <div id="actionPlanPanel"></div>
+  <div id="investigatorPanel"></div>
   <div id="roadmapPanel"></div>
   <div id="checklistPanel"></div>
   <div id="nearbyHelpPanel"></div>
@@ -3275,6 +3327,119 @@ async function fetchActionPlan(){
   }
 }
 
+// ---------------------------------------------------------------------------
+// AI Investigator — the multi-step, tool-using agent (see
+// eligibility-agent.js). Distinct from fetchActionPlan/fetchChecklist above:
+// those always send the same fixed context and get one fixed-shape reply
+// back. This one lets the citizen ask an open-ended question, shows the
+// agent's own step-by-step trace of what it looked up before answering, and
+// stays open so they can ask a follow-up without losing their matches.
+// ---------------------------------------------------------------------------
+function renderInvestigatorTrace(trace){
+  if(!Array.isArray(trace) || !trace.length) return "";
+  const items = trace.map(t => `
+    <li class="investigator-trace-item">
+      <span class="investigator-trace-tool">${escapeHTML(t.tool || "")}</span>
+      ${t.thought ? " — " + escapeHTML(t.thought) : ""}
+    </li>`).join("");
+  return `
+    <button class="investigator-toggle-trace" type="button" data-trace-toggle>Show the agent's reasoning steps (${trace.length})</button>
+    <ul class="investigator-trace" hidden>${items}</ul>`;
+}
+
+function investigatorShell(bodyHTML){
+  return `
+    <div class="agent-panel investigator-panel">
+      <div class="agent-panel-head">
+        <span class="agent-panel-icon">AI AGENT</span>
+        <p class="agent-panel-title">Ask the AI Investigator about your results</p>
+      </div>
+      <div class="investigator-ask-row">
+        <input type="text" id="investigatorInput" placeholder="e.g. What's my total potential benefit?" maxlength="300">
+        <button type="button" id="investigatorAskBtn">Ask</button>
+      </div>
+      <div class="investigator-chips" id="investigatorChips">
+        <button class="investigator-chip" type="button" data-q="What is my total potential benefit across my matches?">💰 Total potential benefit</button>
+        <button class="investigator-chip" type="button" data-q="Which of my matched schemes should I prioritize first and why?">🎯 What to prioritize</button>
+        <button class="investigator-chip" type="button" data-q="Are there any schemes related to my situation I might be missing?">🔍 Anything I'm missing</button>
+      </div>
+      <div id="investigatorAnswerArea">${bodyHTML}</div>
+      <p class="agent-panel-note">The agent only ever looks up your own real results — it can total, compare, or prioritize them, but it never changes an eligibility verdict.</p>
+    </div>`;
+}
+
+function wireInvestigatorControls(lang){
+  const panel = document.getElementById("investigatorPanel");
+  const input = document.getElementById("investigatorInput");
+  const askBtn = document.getElementById("investigatorAskBtn");
+  const run = (q) => { if(q && q.trim()) askInvestigator(q.trim(), lang); };
+  askBtn.addEventListener("click", () => run(input.value));
+  input.addEventListener("keydown", (e) => { if(e.key === "Enter"){ e.preventDefault(); run(input.value); } });
+  panel.querySelectorAll(".investigator-chip").forEach(chip => {
+    chip.addEventListener("click", () => run(chip.getAttribute("data-q")));
+  });
+}
+
+async function askInvestigator(question, lang){
+  const panel = document.getElementById("investigatorPanel");
+  const answerArea = document.getElementById("investigatorAnswerArea");
+  const askBtn = document.getElementById("investigatorAskBtn");
+  const matches = window.lastMatches || [];
+  if(!matches.length || !answerArea) return;
+
+  askBtn.disabled = true;
+  answerArea.innerHTML = `<p class="agent-panel-text loading">Investigating — checking your matches, looking up scheme details…</p>`;
+
+  try{
+    const res = await fetchWithTimeout("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, matches, language: lang })
+    }, 14000);
+    if(!res.ok) throw new Error("Server responded " + res.status);
+    const data = await res.json();
+    if(!data.reply) throw new Error("No reply in response");
+    answerArea.innerHTML = `
+      <p class="agent-panel-text investigator-answer">${escapeHTML(data.reply)}</p>
+      ${readAloudButtonHTML(lang)}
+      ${renderInvestigatorTrace(data.trace)}`;
+    const readBtn = answerArea.querySelector(".read-aloud-btn");
+    if(readBtn) readBtn.addEventListener("click", () => speakText(data.reply, lang, readBtn));
+    const traceToggle = answerArea.querySelector("[data-trace-toggle]");
+    if(traceToggle){
+      traceToggle.addEventListener("click", () => {
+        const list = answerArea.querySelector(".investigator-trace");
+        const nowHidden = list.hasAttribute("hidden");
+        if(nowHidden) list.removeAttribute("hidden"); else list.setAttribute("hidden","");
+      });
+    }
+  }catch(err){
+    answerArea.innerHTML = `<p class="agent-panel-text">Couldn't investigate that just now — please try again in a moment.</p>`;
+  } finally {
+    askBtn.disabled = false;
+  }
+}
+
+function fetchInvestigator(){
+  const panel = document.getElementById("investigatorPanel");
+  const matches = window.lastMatches || [];
+  if(!matches.length || !panel) return;
+
+  // Toggle closed if already open.
+  if(panel.dataset.open === "1"){
+    panel.innerHTML = "";
+    panel.dataset.open = "0";
+    return;
+  }
+
+  let lang = "en";
+  try { lang = sessionStorage.getItem("amIEligible.lang") || "en"; } catch(e) { /* ignore */ }
+
+  panel.innerHTML = investigatorShell(`<p class="agent-panel-text" style="color:var(--ink-soft); font-style:italic;">Type a question above, or tap a suggestion to start.</p>`);
+  panel.dataset.open = "1";
+  wireInvestigatorControls(lang);
+}
+
 function renderChecklist(items){
   if(!items.length){
     return `<p class="agent-panel-text">No documents to list yet — no scheme currently looks like a match. Check the results above.</p>`;
@@ -3339,6 +3504,7 @@ async function fetchChecklist(){
 }
 
 document.getElementById("actionPlanBtn").addEventListener("click", fetchActionPlan);
+document.getElementById("investigatorBtn").addEventListener("click", fetchInvestigator);
 document.getElementById("checklistBtn").addEventListener("click", fetchChecklist);
 
 // ---------------------------------------------------------------------------
@@ -5932,6 +6098,26 @@ if(langToggleBtn){
   .progress-badge b{ color:var(--ink); }
   .progress-bar-track{ flex:1 1 120px; min-width:100px; height:8px; background:var(--paper,#F7F3EA); border-radius:99px; overflow:hidden; border:1px solid var(--line); }
   .progress-bar-fill{ height:100%; background:var(--teal-deep,#145850); border-radius:99px; transition:width .3s ease; }
+
+  /* Benefit headline — the single number that answers "what is this worth
+     to me", shown the instant results compute (no click, no AI call: see
+     the client-side estimator below). Deliberately the most visually loud
+     element in the results section — this is the pain-point payoff. */
+  .benefit-headline{
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+    background: linear-gradient(135deg, rgba(226,166,59,0.16), rgba(20,88,80,0.06));
+    border: 1.5px solid var(--marigold-deep);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin: 0 0 16px;
+  }
+  .benefit-headline-figure{
+    font-family:"Fraunces", serif; font-weight:700; font-size: 1.7rem;
+    color: var(--teal-deep); line-height:1; white-space:nowrap;
+  }
+  .benefit-headline-copy{ font-size:13.5px; color:var(--ink); line-height:1.4; }
+  .benefit-headline-note{ flex-basis:100%; font-size:11px; color:var(--ink-soft); margin-top:2px; }
+  body.text-large .benefit-headline-figure{ font-size:2.1rem; }
 </style>
 <script>
 (function(){
@@ -5978,6 +6164,58 @@ if(langToggleBtn){
   document.addEventListener("change", (e) => {
     if(e.target.closest(".app-tracker-select")) setTimeout(renderProgressSummary, 0);
   });
+
+  // =========================================================================
+  // NEW FEATURE: instant benefit headline. Answers "what is this actually
+  // worth to me" the moment results compute — no click, no AI call, no
+  // network round-trip. Same rupee-parsing logic as the AI Investigator's
+  // estimate_total_benefit tool (eligibility-agent.js) ported to plain
+  // client-side JS so it works identically offline, on the fallback
+  // engine, with zero latency. Deliberately conservative: only sums
+  // schemes whose own vetted `benefit` text has one clear ₹ figure; a
+  // scheme with a loan ceiling or "up to" cover is counted separately as
+  // "not a fixed amount" rather than guessed at.
+  // =========================================================================
+  function parseRupeeAmountClientSide(text){
+    if(!text) return null;
+    const m = String(text).match(/₹\s*([\d,]+(?:\.\d+)?)\s*(lakh|crore)?/i);
+    if(!m) return null;
+    let n = parseFloat(m[1].replace(/,/g, ""));
+    if(Number.isNaN(n)) return null;
+    const unit = (m[2] || "").toLowerCase();
+    if(unit === "lakh") n *= 100000;
+    if(unit === "crore") n *= 10000000;
+    return Math.round(n);
+  }
+
+  function renderBenefitHeadline(){
+    const el = document.getElementById("benefitHeadline");
+    if(!el) return;
+    const matches = window.lastMatches || [];
+    const actionable = matches.filter(m => m.status === "eligible" || m.status === "needs_verification");
+    if(!actionable.length){ el.innerHTML = ""; return; }
+    let total = 0, counted = 0, uncounted = 0;
+    actionable.forEach(m => {
+      const scheme = CATALOG_BY_ID[m.id] || {};
+      const amt = parseRupeeAmountClientSide(scheme.benefit);
+      if(amt != null){ total += amt; counted++; } else { uncounted++; }
+    });
+    if(!counted){ el.innerHTML = ""; return; }
+    const figure = "₹" + total.toLocaleString("en-IN");
+    const schemeWord = counted === 1 ? "scheme" : "schemes";
+    el.innerHTML = `
+      <div class="benefit-headline">
+        <span class="benefit-headline-figure">${figure}+</span>
+        <span class="benefit-headline-copy">combined value across ${counted} matched ${schemeWord} with a fixed benefit amount${uncounted ? ` — plus ${uncounted} more ${uncounted === 1 ? "scheme" : "schemes"} below (loans, insurance cover, or variable amounts not counted here)` : ""}.</span>
+        <span class="benefit-headline-note">Rough, illustrative sum only — schemes pay out on different schedules (one-time / yearly / monthly). Always verify the exact amount on each scheme's own portal.</span>
+      </div>`;
+  }
+
+  const _renderResultsForBenefit = renderResults;
+  renderResults = function(matches, usedFallback){
+    _renderResultsForBenefit(matches, usedFallback);
+    renderBenefitHeadline();
+  };
 
   // =========================================================================
   // NEW FEATURE 7: "🔔 Remind me about all of these" — a single .ics
