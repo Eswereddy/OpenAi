@@ -21,10 +21,11 @@ At a glance:
   tests for the pure rule/validation logic (`test/unit.test.js`), using
   only Node's built-in test runner. Most hackathon submissions ship zero
   tests; this one verifies its own eligibility logic before a judge has to.
-- **5 real AI touchpoints** chained into one journey — not a bolted-on
+- **6 real AI touchpoints** chained into one journey — not a bolted-on
   chatbot — from talk-to-fill-the-form through to a spoken explanation of
-  your results. Three-provider failover (Groq → OpenAI → Anthropic) so a
-  single API outage never breaks the demo.
+  your results, plus a genuine multi-step, tool-using investigator agent.
+  Three-provider failover (Groq → OpenAI → Anthropic) so a single API
+  outage never breaks the demo.
 - **Works offline and on slow connections** — the same rule engine ships
   to the browser, so a citizen on a bad connection still gets a real
   answer, not a spinner.
@@ -83,12 +84,27 @@ chat-assistant.js      The AI chatbot. Answers open-ended questions
                       this app's own scheme catalog. Never hands down a
                       final eligibility verdict — that stays the rule
                       engine's job.
-action-plan.js         The AI agent layer. Reasons across every match —
+action-plan.js         The AI action-plan layer. Reasons across every match —
                       including "not eligible" and "needs verification"
                       ones — and turns the rule engine's own flagged
                       follow-ups into a short, prioritized action plan.
                       Degrades to a plain numbered list of those same
                       follow-ups if no AI key is set.
+eligibility-agent.js   The AI AGENT layer, properly agentic: a multi-step
+                      tool-calling loop (thought → tool call → observation →
+                      repeat, up to 4 steps) that answers open-ended
+                      questions about a citizen's own matches — "what's my
+                      total potential benefit?", "what should I prioritize
+                      and why?" — by deciding for itself which of 4
+                      read-only tools to call (list_matches,
+                      get_scheme_details, estimate_total_benefit,
+                      search_catalog) rather than always seeing the same
+                      fixed context. Every step is returned to the client as
+                      a `trace` array so the UI can show the agent's own
+                      reasoning, not just its final paragraph. Degrades to a
+                      single deterministic keyword-routed tool call if no AI
+                      key is set — still a real, grounded answer, never an
+                      error.
 profile-parser.js      The AI form-fill layer. Turns one free-form sentence
                       ("I'm a 34 year old farmer in Andhra Pradesh...") into
                       the same structured fields the eligibility form
@@ -103,9 +119,9 @@ document-checklist.js  Consolidates and de-duplicates every matched
                       uncommon ones).
 server.js            Express API: GET /api/schemes, POST /api/match,
                       POST /api/summary, POST /api/chat, POST /api/action-plan,
-                      POST /api/checklist, POST /api/parse-profile,
-                      GET /api/stats, GET /api/schemes/:id/why,
-                      POST /api/schemes/:id/verify.
+                      POST /api/agent, POST /api/checklist,
+                      POST /api/parse-profile, GET /api/stats,
+                      GET /api/schemes/:id/why, POST /api/schemes/:id/verify.
 smoke.js             Zero-dependency integration test: boots the real
                       server and hits every endpoint over HTTP.
 test/unit.test.js    Unit tests (Node's built-in test runner, no new
@@ -117,7 +133,7 @@ test/unit.test.js    Unit tests (Node's built-in test runner, no new
 
 ## AI integration
 
-Five AI touchpoints, all grounded in this app's own scheme data (never
+Six AI touchpoints, all grounded in this app's own scheme data (never
 inventing schemes, benefits, or documents) and all degrading gracefully
 with no external call if unconfigured:
 
@@ -156,7 +172,26 @@ touches eligibility itself — the rule engine still only ever reads what's
 actually in the form. It removes typing, not judgement. See
 `profile-parser.js`.
 
-Set one of these environment variables to enable all five AI features at
+**6. AI Investigator (a real multi-step agent)** — a "🔎 Ask the AI
+Investigator" button on the results page opens a small panel where a
+citizen can ask an open-ended question — "what's my total potential
+benefit?", "what should I prioritize first?" — and `POST /api/agent` runs
+an actual tool-calling loop instead of a single prompt: the model decides
+for itself which of four read-only tools to call (`list_matches`,
+`get_scheme_details`, `estimate_total_benefit`, `search_catalog`), reads
+the real result, and can call another tool before giving a final answer —
+up to 4 steps. The response includes a `trace` of every step, which the UI
+renders as "show the agent's reasoning" so the citizen (or a judge) can see
+exactly what it looked up rather than trusting an opaque paragraph. This is
+what separates it from touchpoints 1-5 above: those always receive the same
+fixed context and return one fixed-shape reply; this one chooses its own
+path through the data per question. Same hard boundary as everything else
+here — it can total, compare, and prioritize, but it can never hand down or
+change an eligibility verdict, and with no AI key configured it falls back
+to a single deterministic keyword-routed tool call rather than an error.
+See `eligibility-agent.js`.
+
+Set one of these environment variables to enable all six AI features at
 once:
 
 ```bash
@@ -189,7 +224,7 @@ Llama 3.3 70B). To use it:
 1. Go to https://console.groq.com/keys and sign in (Google/GitHub works).
 2. Click "Create API Key" and copy it.
 3. Copy `env.example.txt` to `.env` and paste it in as `GROQ_API_KEY`.
-4. `npm start` — all five AI features above now work end-to-end for free.
+4. `npm start` — all six AI features above now work end-to-end for free.
 
 `OPENAI_SUMMARY_MODEL` / `ANTHROPIC_SUMMARY_MODEL` / `GROQ_MODEL`
 optionally override each provider's model. With no key set at all, every
@@ -213,7 +248,7 @@ switches:
   and connectivity panels, and the main profile-form fields (`data-i18n`
   attributes in `public/index.html`, translated via the `EN`/`HI`/`TE`
   dictionaries there).
-- **All five AI touchpoints**: summary, chatbot, action plan, document
+- **All six AI touchpoints**: summary, chatbot, action plan, the AI investigator agent, document
   checklist, and fill-by-talking each accept a `language` field and
   respond in that language — including their deterministic
   template/heuristic fallbacks when no AI key is set, so switching
@@ -287,7 +322,7 @@ typing anything.
 
 ## Latest additions
 
-Two features aimed at the two drop-off points the five AI touchpoints above
+Two features aimed at the two drop-off points the six AI touchpoints above
 don't cover — "I'll come back to this later" and "I'd rather talk to a
 person":
 
@@ -423,7 +458,7 @@ commands automatically:
 ## What's real vs. mocked
 
 **Real:** the full citizen journey, the rule-based matching engine, the
-database, the live/offline fallback, the WhatsApp share link, and all five
+database, the live/offline fallback, the WhatsApp share link, and all six
 AI layers (a real call to OpenAI/Anthropic/Groq when a key is set —
 summary, chatbot, action plan, document checklist, and fill-by-talking
 form autofill).
