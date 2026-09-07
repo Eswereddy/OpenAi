@@ -145,6 +145,36 @@ async function main() {
     check("POST /api/action-plan returns 200", planRes.status === 200);
     check("action-plan response includes a plan string", typeof planBody.plan === "string" && planBody.plan.length > 0);
 
+    // POST /api/agent — the multi-step AI agent (template fallback with no
+    // AI key configured in this test run, same as action-plan/checklist
+    // above). Should ground its answer in the farmer profile's own matches
+    // and always include a trace array, even in the fallback path.
+    const agentRes = await fetch(`${BASE}/api/agent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: "What is my total potential benefit?", matches: farmerBody.matches, language: "en" }),
+    });
+    const agentBody = await agentRes.json();
+    check("POST /api/agent returns 200", agentRes.status === 200);
+    check("agent response includes a reply string", typeof agentBody.reply === "string" && agentBody.reply.length > 0);
+    check("agent response includes a trace array", Array.isArray(agentBody.trace));
+
+    // POST /api/agent without a question, or without matches, should both
+    // be a clean 400 — same boundary-validation standard as every other
+    // write-ish endpoint.
+    const agentNoQRes = await fetch(`${BASE}/api/agent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matches: farmerBody.matches }),
+    });
+    check("POST /api/agent without question returns 400", agentNoQRes.status === 400);
+    const agentNoMatchesRes = await fetch(`${BASE}/api/agent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: "hello" }),
+    });
+    check("POST /api/agent without matches returns 400", agentNoMatchesRes.status === 400);
+
     // POST /api/checklist — consolidated document checklist for the same
     // farmer matches; should always return an array (empty is valid too),
     // never error.
