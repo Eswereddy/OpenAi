@@ -145,6 +145,48 @@ async function main() {
     check("POST /api/action-plan returns 200", planRes.status === 200);
     check("action-plan response includes a plan string", typeof planBody.plan === "string" && planBody.plan.length > 0);
 
+    // POST /api/profile-booster — NEW FEATURE, the 7th AI touchpoint.
+    // Should return 200 and a fields array even in the template fallback
+    // path (no AI key configured in this test run), and never error.
+    const boostRes = await fetch(`${BASE}/api/profile-booster`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matches: farmerBody.matches, language: "en" }),
+    });
+    const boostBody = await boostRes.json();
+    check("POST /api/profile-booster returns 200", boostRes.status === 200);
+    check("profile-booster response includes a fields array", Array.isArray(boostBody.fields));
+    check("profile-booster response includes a source string", typeof boostBody.source === "string");
+
+    // POST /api/profile-booster without matches should be a clean 400 —
+    // same boundary-validation standard as every other write-ish endpoint.
+    const boostBadRes = await fetch(`${BASE}/api/profile-booster`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    check("POST /api/profile-booster without matches returns 400", boostBadRes.status === 400);
+
+    // A profile with a genuine income gap (no income given) should surface
+    // "income" as a suggested field to fill — grounded in the real
+    // insufficient_info reason schemes.js already attached, not invented.
+    const gapProfileRes = await fetch(`${BASE}/api/match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ occupation: "Farmer", state: "Andhra Pradesh", age: 40 }),
+    });
+    const gapProfileBody = await gapProfileRes.json();
+    const gapBoostRes = await fetch(`${BASE}/api/profile-booster`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matches: gapProfileBody.matches, language: "en" }),
+    });
+    const gapBoostBody = await gapBoostRes.json();
+    check(
+      "profile-booster surfaces 'income' when household income wasn't given",
+      Array.isArray(gapBoostBody.fields) && gapBoostBody.fields.includes("income")
+    );
+
     // POST /api/agent — the multi-step AI agent (template fallback with no
     // AI key configured in this test run, same as action-plan/checklist
     // above). Should ground its answer in the farmer profile's own matches
