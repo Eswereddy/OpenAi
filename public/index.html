@@ -2957,8 +2957,14 @@ function updateLivePreview(){
     livePreviewEl.style.display = "flex";
     livePreviewEl.classList.toggle("has-count", count > 0);
     const benefitLine = benefitTotal > 0 ? ` — up to ${formatRupees(benefitTotal)} in benefits` : "";
+    // NEW FEATURE: a small, additive hint — ties the live scanner to the
+    // same idea behind "Sharpen my results" (profile-booster.js), just
+    // earlier in the flow, before the citizen even submits. Never changes
+    // the count/benefit text above; only appends one short clause when
+    // income genuinely hasn't been entered yet.
+    const incomeHint = (profile.income == null || profile.income === "") ? " · add income for a sharper count" : "";
     livePreviewTextEl.textContent = count > 0
-      ? `${count} scheme${count===1?"":"s"} look possible so far${benefitLine} — keep going for your full, verified list`
+      ? `${count} scheme${count===1?"":"s"} look possible so far${benefitLine} — keep going for your full, verified list${incomeHint}`
       : "Scanning… fill in a bit more to see possible matches";
   }, 250);
 }
