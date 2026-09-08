@@ -187,6 +187,35 @@ async function main() {
       Array.isArray(gapBoostBody.fields) && gapBoostBody.fields.includes("income")
     );
 
+    // REGRESSION: the Hindi/Telugu template fallback previously leaked raw
+    // English field labels (e.g. "your household income बताएं") into the
+    // translated tips. Every tip in a non-English response must be fully
+    // in-script — no stray ASCII words from an untranslated label.
+    const gapBoostHiRes = await fetch(`${BASE}/api/profile-booster`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matches: gapProfileBody.matches, language: "hi" }),
+    });
+    const gapBoostHiBody = await gapBoostHiRes.json();
+    check(
+      "profile-booster (Hindi) tips contain no leaked English field labels",
+      Array.isArray(gapBoostHiBody.tips) &&
+        gapBoostHiBody.tips.length > 0 &&
+        gapBoostHiBody.tips.every((t) => !/[a-zA-Z]{4,}/.test(t))
+    );
+    const gapBoostTeRes = await fetch(`${BASE}/api/profile-booster`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matches: gapProfileBody.matches, language: "te" }),
+    });
+    const gapBoostTeBody = await gapBoostTeRes.json();
+    check(
+      "profile-booster (Telugu) tips contain no leaked English field labels",
+      Array.isArray(gapBoostTeBody.tips) &&
+        gapBoostTeBody.tips.length > 0 &&
+        gapBoostTeBody.tips.every((t) => !/[a-zA-Z]{4,}/.test(t))
+    );
+
     // POST /api/agent — the multi-step AI agent (template fallback with no
     // AI key configured in this test run, same as action-plan/checklist
     // above). Should ground its answer in the farmer profile's own matches
