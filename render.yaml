@@ -9,3 +9,14 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.18.1
+    # Persistent disk for data.db (SQLite) — see README's "Deploy" section.
+    # NOT active: Render's free `plan` above cannot attach a disk at all
+    # (paid plans only), so this stays commented rather than silently
+    # failing to deploy. To use it: change `plan: free` above to a paid
+    # plan (e.g. `starter`), uncomment the block below, and set
+    # DB_PATH=/data/data.db as an env var — db/index.js already reads
+    # DB_PATH from the environment, so no code change is needed.
+    # disk:
+    #   name: am-i-eligible-data
+    #   mountPath: /data
+    #   sizeGB: 1
