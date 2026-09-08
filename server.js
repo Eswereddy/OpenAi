@@ -22,6 +22,7 @@ const { buildQrCodePng } = require("./qrcode-report"); // NEW FEATURE: QR code s
 const { computeImpact } = require("./impact-stats"); // NEW FEATURE: homepage live impact ticker
 const { buildReminderIcs, buildBulkReminderIcs, planFor } = require("./reminder"); // NEW FEATURE: "remind me later" calendar file per scheme; planFor is also reused by the priority-roadmap timeline below, buildBulkReminderIcs by the "remind me about all" button
 const { investigate } = require("./eligibility-agent"); // NEW FEATURE: multi-step, tool-using AI agent — see eligibility-agent.js
+const { generateBoost } = require("./profile-booster"); // NEW FEATURE: 7th AI touchpoint — "what should I fill in next?" — see profile-booster.js
 
 // Minimal local-dev .env loader — no dependency added, matches this repo's
 // "as few dependencies as the task actually needs" style. Only fills in
@@ -104,6 +105,7 @@ const reminderLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 }); // NEW FEAT
 // MAX_STEPS model calls (a real multi-step loop), so it's the most
 // expensive single request in the app per hit.
 const agentLimiter = rateLimit({ windowMs: 60 * 1000, max: 8 });
+const boostLimiter = rateLimit({ windowMs: 60 * 1000, max: 12 }); // NEW FEATURE: same cap as the other single-prompt AI routes (summary/action-plan/checklist)
 
 // GET /api/schemes — full catalog of scheme metadata (name, benefit, docs, etc.)
 // Read from the database, which is the source of truth for displayable
@@ -237,6 +239,35 @@ app.post("/api/action-plan", actionPlanLimiter, (req, res) => {
     } catch (err) {
       console.error("POST /api/action-plan failed:", err);
       res.status(500).json({ error: "Could not generate an action plan." });
+    }
+  })();
+});
+
+// POST /api/profile-booster — NEW FEATURE, the 7th AI touchpoint. Distinct
+// from every route above: those explain matches that already succeeded;
+// this looks at matches stuck on "insufficient_info" / "needs_verification"
+// and tells the citizen which one or two extra facts (income, a BPL card,
+// a bank account, etc.) would sharpen the most results — grounded entirely
+// in the `reasons.watch` strings schemes.js already attached to those
+// matches, never a guessed or invented field. See profile-booster.js.
+app.post("/api/profile-booster", boostLimiter, (req, res) => {
+  (async () => {
+    try {
+      const { matches, language } = req.body || {};
+      if (!Array.isArray(matches)) {
+        return res.status(400).json({ error: "matches must be an array." });
+      }
+      const catalogById = {};
+      getAllSchemes().forEach((s) => { catalogById[s.id] = s; });
+      const { summary, tips, source, fields } = await generateBoost({
+        matches,
+        catalogById,
+        language: ["hi", "te"].includes(language) ? language : "en",
+      });
+      res.json({ summary, tips, source, fields });
+    } catch (err) {
+      console.error("POST /api/profile-booster failed:", err);
+      res.status(500).json({ error: "Could not generate suggestions." });
     }
   })();
 });
