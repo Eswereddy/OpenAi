@@ -1804,6 +1804,7 @@
   <div id="aiSummary"></div>
   <div id="incomeSimulator"></div>
   <div id="agentButtonRow" class="no-print" style="display:none; gap:10px; margin:-6px 0 16px; flex-wrap:wrap;">
+    <button class="agent-btn" id="boostBtn" type="button">💡 Sharpen my results</button>
     <button class="agent-btn" id="actionPlanBtn" type="button">🧭 What should I do next?</button>
     <button class="agent-btn" id="investigatorBtn" type="button">🔎 Ask the AI Investigator</button>
     <button class="agent-btn" id="roadmapBtn" type="button">🗓️ My priority roadmap</button>
@@ -1813,6 +1814,7 @@
     <button class="agent-btn" id="csvExportBtn" type="button">📊 Export results as CSV</button>
   </div>
   <div id="qrSharePanel"></div>
+  <div id="boostPanel"></div>
   <div id="actionPlanPanel"></div>
   <div id="investigatorPanel"></div>
   <div id="roadmapPanel"></div>
@@ -3272,6 +3274,79 @@ async function fetchAISummary(profile, matches){
 // AI call, so this only spends it when the citizen actually wants it,
 // matching the cost-conscious pattern the rest of this app's rate
 // limiting/caching already follows.
+// NEW FEATURE — the 7th AI touchpoint: "Sharpen my results". Distinct from
+// fetchActionPlan below (which reasons about next steps on matches that
+// already succeeded): this looks specifically at schemes stuck on "needs
+// more info" and tells the citizen which one or two extra facts would
+// unlock the most additional matches. See profile-booster.js for how the
+// suggestion is grounded in the rule engine's own pending reasons.
+async function fetchBoost(){
+  const btn = document.getElementById("boostBtn");
+  const el = document.getElementById("boostPanel");
+  const matches = window.lastMatches || [];
+  if(!matches.length) return;
+
+  let lang = "en";
+  try { lang = sessionStorage.getItem("amIEligible.lang") || "en"; } catch(e) { /* ignore */ }
+
+  btn.disabled = true;
+  el.innerHTML = `
+    <div class="agent-panel">
+      <div class="agent-panel-head">
+        <span class="agent-panel-icon">SHARPEN</span>
+        <p class="agent-panel-title">Checking what's still missing…</p>
+      </div>
+      <p class="agent-panel-text loading">Looking for the fastest way to unlock more matches…</p>
+    </div>`;
+
+  try{
+    const res = await fetchWithTimeout("/api/profile-booster", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matches, language: lang })
+    }, 9000);
+    if(!res.ok) throw new Error("Server responded " + res.status);
+    const data = await res.json();
+    const bodyText = data.summary && data.tips && data.tips.length
+      ? [data.summary, ...data.tips].join(" ")
+      : (data.summary || "");
+    if(!bodyText){
+      el.innerHTML = `
+        <div class="agent-panel">
+          <div class="agent-panel-head">
+            <span class="agent-panel-icon">SHARPEN</span>
+            <p class="agent-panel-title">Nothing more needed</p>
+          </div>
+          <p class="agent-panel-text">Your answers already cover every match below — no extra info would change these results.</p>
+        </div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="agent-panel">
+        <div class="agent-panel-head">
+          <span class="agent-panel-icon">SHARPEN</span>
+          <p class="agent-panel-title">Fill these in to unlock more</p>
+        </div>
+        <p class="agent-panel-text">${escapeHTML(bodyText)}</p>
+        ${readAloudButtonHTML(lang)}
+        <p class="agent-panel-note">Based only on the "needs more info" reasons already shown on your match cards — nothing invented.</p>
+      </div>`;
+    const readBtn = el.querySelector(".read-aloud-btn");
+    if(readBtn) readBtn.addEventListener("click", () => speakText(bodyText, lang, readBtn));
+  }catch(err){
+    el.innerHTML = `
+      <div class="agent-panel">
+        <div class="agent-panel-head">
+          <span class="agent-panel-icon">SHARPEN</span>
+          <p class="agent-panel-title">Couldn't load this right now</p>
+        </div>
+        <p class="agent-panel-text">Please try again in a moment, or check each scheme card's "Why?" link for what's still pending.</p>
+      </div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function fetchActionPlan(){
   const btn = document.getElementById("actionPlanBtn");
   const el = document.getElementById("actionPlanPanel");
@@ -3503,6 +3578,7 @@ async function fetchChecklist(){
   }
 }
 
+document.getElementById("boostBtn").addEventListener("click", fetchBoost);
 document.getElementById("actionPlanBtn").addEventListener("click", fetchActionPlan);
 document.getElementById("investigatorBtn").addEventListener("click", fetchInvestigator);
 document.getElementById("checklistBtn").addEventListener("click", fetchChecklist);
@@ -4027,6 +4103,7 @@ function renderResults(matches, usedFallback){
   // A fresh set of results invalidates whatever plan/checklist was showing
   // for the previous profile — clear both rather than leave a stale one
   // (or last click's contents) sitting under new results.
+  document.getElementById("boostPanel").innerHTML = "";
   document.getElementById("actionPlanPanel").innerHTML = "";
   document.getElementById("checklistPanel").innerHTML = "";
   if(!matches.length){
