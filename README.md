@@ -22,7 +22,7 @@ actually contact, with a reason for every match, in **English, Hindi, or
 Telugu**.
 
 At a glance:
-- **60 automated checks, 0 external test dependencies** — `npm test` boots
+- **90+ automated checks, 0 external test dependencies** — `npm test` boots
   the real server and exercises every endpoint (`smoke.js`), plus unit
   tests for the pure rule/validation logic (`test/unit.test.js`), using
   only Node's built-in test runner. Most hackathon submissions ship zero
@@ -34,7 +34,9 @@ At a glance:
   outage never breaks the demo.
 - **Works offline and on slow connections** — the same rule engine ships
   to the browser, so a citizen on a bad connection still gets a real
-  answer, not a spinner.
+  answer, not a spinner. Every response is also gzip-compressed
+  server-side, and static assets carry cache headers, so the first load
+  stays fast on the 2G/3G connections this app is actually built for.
 - **Never invents anything** — every AI layer explains or organizes a
   verdict the deterministic rule engine already computed; none of them
   decide eligibility themselves.
