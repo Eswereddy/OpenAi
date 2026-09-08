@@ -426,6 +426,32 @@ is enforced by an actual regression test (`smoke.js`), not just a
 one-time manual check, after the offline copy was found to have silently
 drifted 8 schemes behind the live one.
 
+## Newest addition — the 7th AI touchpoint: "Sharpen my results"
+
+The six AI touchpoints above all explain matches that already succeeded.
+Nothing told a citizen who only filled the required fields *which one
+extra fact* — a household income figure, a BPL/ration card, a bank
+account — would turn their "needs more info" schemes into real answers,
+so they were left guessing whether re-opening the form was even worth it.
+
+**💡 Sharpen my results** — a new button on the results page
+(`POST /api/profile-booster`, see `profile-booster.js`) reads the
+`reasons.watch` text the rule engine already attached to every
+`insufficient_info` / `needs_verification` match, groups those by the
+actual profile field each one is really asking about, ranks them by how
+many pending schemes each would affect, and asks an LLM for one short,
+encouraging nudge — "add your household income, this could confirm up to
+2 more schemes." Same hard boundary as every AI file in this app: it
+never invents a field that isn't already one of this form's real inputs
+and never invents a scheme name beyond what the rule engine already
+matched, and it degrades to a deterministic ranked-list template (no
+external call) if no AI key is configured or the call fails — this is
+a genuine 7th, independently useful AI touchpoint, not a restyled
+`ai-summary.js`, since it reasons about what's *missing* rather than
+explaining what's already there. Covered by new smoke tests in
+`smoke.js` (200/400 paths, and a real income-gap detection check),
+alongside the existing 60+ checks — all still green.
+
 ## Run locally
 
 ```bash
