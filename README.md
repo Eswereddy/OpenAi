@@ -6,7 +6,7 @@
 
 # Am I Eligible? — Welfare Scheme Discovery
 
-**[Live demo →](https://am-i-eligible.onrender.com/) · [90-second demo video →](https://drive.google.com/file/d/1vmiJueOBj8ZW4-NAYK3aZWDbrzHnIZMC/view?usp=drivesdk) · [For judges →](https://am-i-eligible.onrender.com/for-judges.html)**
+**[Live demo →](https://am-i-eligible.onrender.com/) · [90-second demo video →](https://drive.google.com/file/d/1sGN3H6vSHHQXnSnbzwqadFHByl74lS7y/view?usp=drivesdk) · [For judges →](https://am-i-eligible.onrender.com/for-judges.html)**
 
 India runs 1,000+ welfare schemes. Most eligible citizens never find out
 they qualify — not because they're not eligible, but because discovering
