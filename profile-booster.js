@@ -27,15 +27,27 @@ const BOOSTER_CACHE_TTL_MS = 15 * 60 * 1000;
 // Order matters only for tie-breaking; ranking itself is by how many
 // distinct matches raised the same underlying field.
 const FIELD_HINTS = [
-  { test: /household income/i, field: "income", label: "your household income" },
-  { test: /bpl\/ration card|bpl card|ration card/i, field: "bplCard", label: "whether you hold a BPL/ration card" },
-  { test: /bank account/i, field: "bankAccount", label: "whether you have a bank account" },
-  { test: /disability/i, field: "disability", label: "whether you have a disability" },
-  { test: /widow/i, field: "widow", label: "your widow status" },
-  { test: /pucca house|kutcha/i, field: "noPuccaHouse", label: "your housing status" },
-  { test: /maternity|pregnan/i, field: "maternity", label: "your maternity status" },
-  { test: /category/i, field: "category", label: "your social category (SC/ST/OBC/EWS)" },
+  { test: /household income/i, field: "income",
+    label: { en: "your household income", hi: "अपनी घरेलू आय", te: "మీ కుటుంబ ఆదాయం" } },
+  { test: /bpl\/ration card|bpl card|ration card/i, field: "bplCard",
+    label: { en: "whether you hold a BPL/ration card", hi: "आपके पास बीपीएल/राशन कार्ड है या नहीं", te: "మీ వద్ద బీపీఎల్/రేషన్ కార్డు ఉందా లేదా" } },
+  { test: /bank account/i, field: "bankAccount",
+    label: { en: "whether you have a bank account", hi: "आपका बैंक खाता है या नहीं", te: "మీకు బ్యాంకు ఖాతా ఉందా లేదా" } },
+  { test: /disability/i, field: "disability",
+    label: { en: "whether you have a disability", hi: "आपको दिव्यांगता है या नहीं", te: "మీకు వైకల్యం ఉందా లేదా" } },
+  { test: /widow/i, field: "widow",
+    label: { en: "your widow status", hi: "आपकी विधवा स्थिति", te: "మీ వితంతు స్థితి" } },
+  { test: /pucca house|kutcha/i, field: "noPuccaHouse",
+    label: { en: "your housing status", hi: "आपकी आवास स्थिति", te: "మీ ఇంటి పరిస్థితి" } },
+  { test: /maternity|pregnan/i, field: "maternity",
+    label: { en: "your maternity status", hi: "आपकी मातृत्व स्थिति", te: "మీ మాతృత్వ స్థితి" } },
+  { test: /category/i, field: "category",
+    label: { en: "your social category (SC/ST/OBC/EWS)", hi: "आपकी सामाजिक श्रेणी (SC/ST/OBC/EWS)", te: "మీ సామాజిక వర్గం (SC/ST/OBC/EWS)" } },
 ];
+
+function labelFor(hint, language) {
+  return (hint.label && (hint.label[language] || hint.label.en)) || "";
+}
 
 // Pulls one { field, label, schemeNames[] } entry per distinct missing
 // field out of the matches the rule engine already returned — grounding
@@ -67,9 +79,10 @@ function templateBoost(gaps, language) {
   }
   const tips = gaps.map((g) => {
     const count = g.schemeNames.length;
-    if (language === "hi") return `${g.label} बताएं — इससे ${count} और योजना${count === 1 ? "" : "ओं"} की जाँच हो सकेगी।`;
-    if (language === "te") return `${g.label} తెలియజేయండి — దీనితో మరో ${count} పథకా${count === 1 ? "నికి" : "లకు"} తనిఖీ చేయవచ్చు.`;
-    return `Add ${g.label} — this could confirm up to ${count} more scheme${count === 1 ? "" : "s"}.`;
+    const label = labelFor(g, language);
+    if (language === "hi") return `${label} बताएं — इससे ${count} और योजना${count === 1 ? "" : "ओं"} की जाँच हो सकेगी।`;
+    if (language === "te") return `${label} తెలియజేయండి — దీనితో మరో ${count} పథకా${count === 1 ? "నికి" : "లకు"} తనిఖీ చేయవచ్చు.`;
+    return `Add ${label} — this could confirm up to ${count} more scheme${count === 1 ? "" : "s"}.`;
   });
   const summary = language === "hi"
     ? "इन्हें भरकर अपने नतीजे और पुख्ता करें:"
@@ -80,7 +93,7 @@ function templateBoost(gaps, language) {
 }
 
 function buildPrompt(gaps, language) {
-  const lines = gaps.map((g, i) => `${i + 1}. Field: ${g.label} — currently unknown, affects: ${g.schemeNames.join(", ")}`).join("\n");
+  const lines = gaps.map((g, i) => `${i + 1}. Field: ${labelFor(g, "en")} — currently unknown, affects: ${g.schemeNames.join(", ")}`).join("\n");
   return `A citizen using a government welfare-scheme checker has some schemes stuck at "needs more info" purely because these fields weren't filled in. ` +
     `Write 1 short encouraging sentence, then up to 3 short bullet-style nudges (no markdown bullets, just short sentences), each naming ONE field below and how many schemes it affects. ` +
     `Never suggest a field not listed. Never invent a scheme name beyond what's listed. Keep the whole reply under 60 words. ` +
