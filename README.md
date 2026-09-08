@@ -123,11 +123,24 @@ document-checklist.js  Consolidates and de-duplicates every matched
                       a short "how to get it" tip per document (a built-in
                       library for common documents; AI only fills gaps for
                       uncommon ones).
-server.js            Express API: GET /api/schemes, POST /api/match,
-                      POST /api/summary, POST /api/chat, POST /api/action-plan,
-                      POST /api/agent, POST /api/checklist,
-                      POST /api/parse-profile, GET /api/stats,
-                      GET /api/schemes/:id/why, POST /api/schemes/:id/verify.
+server.js            Express API. Core journey: GET /api/schemes,
+                      POST /api/match, POST /api/summary, POST /api/chat,
+                      POST /api/action-plan, POST /api/agent,
+                      POST /api/profile-booster, POST /api/checklist,
+                      POST /api/parse-profile, GET /api/schemes/:id/why,
+                      POST /api/schemes/:id/verify.
+                      Supporting features (built since the list above was
+                      first written — kept here so this file matches the
+                      actual route table, not a snapshot of it):
+                      POST /api/report/pdf and POST /api/qrcode (downloadable/
+                      shareable results), GET /api/schemes/:id/reminder.ics,
+                      GET /api/schemes/:id/reminder-plan,
+                      POST /api/schemes/reminder-plans, and
+                      POST /api/schemes/reminders/bulk.ics ("remind me
+                      later" calendar files), GET /api/stats and
+                      GET /api/impact (usage/impact numbers),
+                      POST /api/feedback and GET /api/feedback/stats,
+                      plus GET /api/ping and GET /healthz for uptime checks.
 smoke.js             Zero-dependency integration test: boots the real
                       server and hits every endpoint over HTTP.
 test/unit.test.js    Unit tests (Node's built-in test runner, no new
@@ -139,7 +152,7 @@ test/unit.test.js    Unit tests (Node's built-in test runner, no new
 
 ## AI integration
 
-Six AI touchpoints, all grounded in this app's own scheme data (never
+Seven AI touchpoints, all grounded in this app's own scheme data (never
 inventing schemes, benefits, or documents) and all degrading gracefully
 with no external call if unconfigured:
 
@@ -197,7 +210,17 @@ change an eligibility verdict, and with no AI key configured it falls back
 to a single deterministic keyword-routed tool call rather than an error.
 See `eligibility-agent.js`.
 
-Set one of these environment variables to enable all six AI features at
+**7. Sharpen my results (profile booster)** — a "💡 Sharpen my results"
+button on the results page calls `POST /api/profile-booster`, which looks
+at every "needs more info" match, works out which single missing profile
+field (income, ration card, bank account, etc.) would unlock the most
+pending schemes, and gives one short, encouraging nudge on what to add
+next. Unlike touchpoints 1–6, which explain matches that already
+succeeded, this one reasons about what's still *missing*. Degrades to a
+deterministic ranked-list template if no AI key is configured. See
+`profile-booster.js` and "Newest addition" below for the full write-up.
+
+Set one of these environment variables to enable all seven AI features at
 once:
 
 ```bash
@@ -230,7 +253,7 @@ Llama 3.3 70B). To use it:
 1. Go to https://console.groq.com/keys and sign in (Google/GitHub works).
 2. Click "Create API Key" and copy it.
 3. Copy `env.example.txt` to `.env` and paste it in as `GROQ_API_KEY`.
-4. `npm start` — all six AI features above now work end-to-end for free.
+4. `npm start` — all seven AI features above now work end-to-end for free.
 
 `OPENAI_SUMMARY_MODEL` / `ANTHROPIC_SUMMARY_MODEL` / `GROQ_MODEL`
 optionally override each provider's model. With no key set at all, every
@@ -254,8 +277,8 @@ switches:
   and connectivity panels, and the main profile-form fields (`data-i18n`
   attributes in `public/index.html`, translated via the `EN`/`HI`/`TE`
   dictionaries there).
-- **All six AI touchpoints**: summary, chatbot, action plan, the AI investigator agent, document
-  checklist, and fill-by-talking each accept a `language` field and
+- **All seven AI touchpoints**: summary, chatbot, action plan, the AI investigator agent, document
+  checklist, fill-by-talking, and sharpen-my-results each accept a `language` field and
   respond in that language — including their deterministic
   template/heuristic fallbacks when no AI key is set, so switching
   languages never depends on an API call succeeding. `server.js`'s
@@ -484,16 +507,30 @@ commands automatically:
   homepage impact ticker can reset to zero. The ticker already handles
   this honestly (it shows "Be the first to check your eligibility today"
   rather than a fabricated or stale number), so this is a known trade-off,
-  not a bug. Attach a persistent Render disk (or point `DB_PATH` at
-  Postgres/an external DB) to keep history across deploys.
+  not a bug. **Correction to a previous version of this note:** Render's
+  *free* compute plan cannot attach a persistent disk at all — that
+  feature only exists on paid plans. Two real ways to fix it:
+  1. Upgrade the Render service to a paid plan (Starter, ~$7/mo) and add
+     a disk in `render.yaml` (see the commented example there), pointing
+     `DB_PATH` at a file under that disk's mount path — no code changes
+     needed since `db/index.js` already reads `DB_PATH` from the
+     environment.
+  2. Keep the free plan and swap SQLite for a free-tier hosted Postgres
+     (e.g. Render's own free Postgres, Neon, Supabase) — this *would*
+     require code changes to `db/index.js` (a different driver), so it's
+     a deliberate follow-up, not something to do casually before a
+     submission deadline.
+  Either way, this is a real, disclosed trade-off of the current
+  architecture, not a hidden bug — call it out proactively if a judge
+  asks why the impact counter reset.
 
 ## What's real vs. mocked
 
 **Real:** the full citizen journey, the rule-based matching engine, the
-database, the live/offline fallback, the WhatsApp share link, and all six
-AI layers (a real call to OpenAI/Anthropic/Groq when a key is set —
-summary, chatbot, action plan, document checklist, and fill-by-talking
-form autofill).
+database, the live/offline fallback, the WhatsApp share link, and all
+seven AI layers (a real call to Groq/OpenAI/Anthropic when a key is set —
+summary, chatbot, action plan, document checklist, fill-by-talking form
+autofill, the multi-step AI investigator agent, and sharpen-my-results).
 
 **Mocked:** the schemes reflect publicly known, general eligibility
 criteria — not a live government feed. "Start application" does not submit
