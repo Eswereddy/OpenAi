@@ -1,6 +1,12 @@
+> ### 🏆 Judging this? Read this box first (30 seconds), or open **[/for-judges.html](https://am-i-eligible.onrender.com/for-judges.html)** for the full scannable briefing.
+> - **What it is:** a rule-engine-first (never AI-decided) welfare eligibility checker for 29 real Indian central + state schemes, in English/Hindi/Telugu.
+> - **What to try in 30 seconds:** open the [live demo](https://am-i-eligible.onrender.com/), tap a "try an example" chip, and watch the whole loop — AI form-fill → rule-engine verdict → AI summary → action plan — run itself.
+> - **What's unusual for a hackathon project:** 83+ automated tests (`npm test`, zero external test deps), 3-provider AI failover so a single API outage never breaks the demo, and every scheme shows its own source/last-verified/version instead of a bare "trust us."
+> - **CI:** a GitHub Actions workflow (`.github/workflows/ci.yml`) runs `npm test` on every push — tests run automatically, not just on my laptop. *(Once this is pushed, swap this line for `![CI](https://github.com/<your-username>/<your-repo>/actions/workflows/ci.yml/badge.svg)` with your actual repo path.)*
+
 # Am I Eligible? — Welfare Scheme Discovery
 
-**[Live demo →](https://am-i-eligible.onrender.com/) · [90-second demo video →](https://drive.google.com/file/d/1vmiJueOBj8ZW4-NAYK3aZWDbrzHnIZMC/view?usp=drivesdk)**
+**[Live demo →](https://am-i-eligible.onrender.com/) · [90-second demo video →](https://drive.google.com/file/d/1vmiJueOBj8ZW4-NAYK3aZWDbrzHnIZMC/view?usp=drivesdk) · [For judges →](https://am-i-eligible.onrender.com/for-judges.html)**
 
 India runs 1,000+ welfare schemes. Most eligible citizens never find out
 they qualify — not because they're not eligible, but because discovering
