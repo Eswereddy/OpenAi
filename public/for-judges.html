@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Am I Eligible? — For Judges</title>
+<meta name="robots" content="noindex">
+<style>
+  :root{
+    --paper: #F6F1E4;
+    --paper-2: #EFE8D4;
+    --card: #FFFDF7;
+    --ink: #1F2A1D;
+    --ink-soft: #55604F;
+    --marigold: #E2A63B;
+    --marigold-deep: #C4832A;
+    --teal: #145850;
+    --teal-deep: #0E403A;
+    --alert: #B23A2E;
+    --line: #D8CFB8;
+    --radius: 3px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    line-height:1.55;
+  }
+  a{ color: var(--teal); }
+  .wrap{ max-width: 860px; margin: 0 auto; padding: 28px 20px 80px; }
+  header.hero{
+    border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 28px;
+  }
+  .eyebrow{
+    text-transform: uppercase; letter-spacing: .08em; font-size: 12px;
+    color: var(--teal-deep); font-weight: 600; margin-bottom: 6px;
+  }
+  h1{ font-size: 30px; margin: 0 0 8px; }
+  .tagline{ font-size: 17px; color: var(--ink-soft); margin: 0 0 18px; max-width: 60ch; }
+  .cta-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .btn{
+    display:inline-block; padding: 10px 16px; border-radius: var(--radius);
+    text-decoration:none; font-weight:600; font-size:14px; border:2px solid var(--ink);
+  }
+  .btn-primary{ background: var(--teal); color:#fff; border-color: var(--teal-deep); }
+  .btn-secondary{ background: var(--card); color:var(--ink); }
+  h2{ font-size: 20px; border-bottom: 1.5px solid var(--line); padding-bottom: 6px; margin-top: 40px; }
+  .grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); gap:14px; margin-top:16px; }
+  .card{
+    background: var(--card); border: 1.5px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .card h3{ margin: 0 0 6px; font-size: 15px; }
+  .card p{ margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+  .stat-row{ display:flex; gap:14px; flex-wrap:wrap; margin-top: 14px; }
+  .stat{
+    background: var(--paper-2); border: 1.5px solid var(--line); border-radius: var(--radius);
+    padding: 12px 16px; min-width: 130px; text-align:center;
+  }
+  .stat .n{ font-size: 24px; font-weight: 700; color: var(--teal-deep); display:block; }
+  .stat .l{ font-size: 12px; color: var(--ink-soft); }
+  .flow{
+    display:flex; flex-direction:column; gap:0; margin-top: 14px;
+    border-left: 2.5px solid var(--teal); padding-left: 18px;
+  }
+  .flow div{ position: relative; padding: 10px 0; font-size: 14px; }
+  .flow div::before{
+    content:""; position:absolute; left:-23px; top:16px; width:9px; height:9px;
+    border-radius:50%; background: var(--teal); border:2px solid var(--paper);
+  }
+  .flow b{ color: var(--teal-deep); }
+  table{ width:100%; border-collapse: collapse; margin-top: 14px; font-size: 13.5px; }
+  th,td{ text-align:left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th{ color: var(--ink-soft); font-weight:600; }
+  code{ background: var(--paper-2); padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }
+  footer{ margin-top: 48px; border-top: 1.5px solid var(--line); padding-top: 16px; font-size: 13px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Judge briefing · 60-second read</div>
+    <h1>Am I Eligible?</h1>
+    <p class="tagline">India runs 1,000+ welfare schemes. Most eligible citizens never find
+      out they qualify. This app collapses discovery into one 2-minute conversation —
+      in English, Hindi, or Telugu — and never invents an answer: every AI layer explains
+      a verdict a deterministic rule engine already computed.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="/">Open the live app →</a>
+      <a class="btn btn-secondary" href="https://drive.google.com/file/d/1vmiJueOBj8ZW4-NAYK3aZWDbrzHnIZMC/view?usp=drivesdk" target="_blank" rel="noopener">Watch the 90s demo</a>
+      <a class="btn btn-secondary" href="https://github.com/Eswereddy" target="_blank" rel="noopener">View the code</a>
+    </div>
+  </header>
+
+  <div class="stat-row">
+    <div class="stat"><span class="n">29</span><span class="l">real central + state schemes</span></div>
+    <div class="stat"><span class="n">3</span><span class="l">languages, full journey</span></div>
+    <div class="stat"><span class="n">6</span><span class="l">chained AI touchpoints</span></div>
+    <div class="stat"><span class="n">3</span><span class="l">AI providers, auto-failover</span></div>
+    <div class="stat"><span class="n">83+</span><span class="l">automated checks (<code>npm test</code>)</span></div>
+    <div class="stat"><span class="n">0</span><span class="l">fabricated eligibility verdicts</span></div>
+  </div>
+
+  <h2>Why this is different from a typical hackathon eligibility-checker demo</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Rule engine decides, AI only explains</h3>
+      <p>Every eligibility verdict comes from a deterministic, testable rule engine.
+        AI never decides who qualifies — it only turns an already-computed verdict
+        into plain language, an action plan, or an answer to a follow-up question.</p>
+    </div>
+    <div class="card">
+      <h3>Never goes down</h3>
+      <p>Three-provider AI failover (Groq → OpenAI → Anthropic) means one outage
+        doesn't break the demo — and with zero keys configured, every feature still
+        works via a deterministic template, so a bad wifi day at judging never costs
+        you a feature.</p>
+    </div>
+    <div class="card">
+      <h3>Built for the real user, not the demo</h3>
+      <p>Offline-capable rule engine, voice input/output, high-contrast mode,
+        adjustable text size, WhatsApp share, and calendar reminders — for a citizen
+        on a low-end phone and a bad connection, not just for a judge on a laptop.</p>
+    </div>
+    <div class="card">
+      <h3>Tested, not just demoed</h3>
+      <p>83+ automated checks across unit tests (pure rule/validation logic) and a
+        zero-dependency smoke suite that boots the real server and exercises every
+        API route — <code>npm test</code>, no mocking framework required.</p>
+    </div>
+    <div class="card">
+      <h3>Genuinely agentic, not a chatbot skin</h3>
+      <p>The AI Investigator runs a real multi-step tool-calling loop (up to 4 steps)
+        over 4 read-only tools, and returns its own reasoning trace — not one fixed
+        prompt with a fixed answer shape.</p>
+    </div>
+    <div class="card">
+      <h3>Provenance over confidence</h3>
+      <p>Every scheme shows its source, last-verified date, and a version number.
+        A citizen thumbs-down on a match feeds a real feedback table used to flag
+        which scheme's rules need a human re-check first.</p>
+    </div>
+  </div>
+
+  <h2>How the pieces connect (one journey, not five bolt-ons)</h2>
+  <div class="flow">
+    <div>Speak/type one sentence <b>or</b> tap a 1-click example</div>
+    <div>AI extracts structured fields → form pre-fills → citizen reviews/edits</div>
+    <div>Live on-device match count + ₹ estimate while the form is completed</div>
+    <div><b>Rule engine</b> decides eligibility — never AI</div>
+    <div>AI summary explains the verdict in plain language → 🔊 read aloud</div>
+    <div>🔧 Income slider re-runs the same rules instantly, no AI call</div>
+    <div>🧭 AI action plan + 📋 AI document checklist, both readable aloud</div>
+    <div>🔎 AI Investigator answers open-ended follow-ups with a visible reasoning trace</div>
+    <div>🔔 Calendar reminder / 🖨 Print / 📲 WhatsApp share to hand off to family</div>
+  </div>
+
+  <h2>Architecture at a glance</h2>
+  <table>
+    <tr><th>Layer</th><th>File</th><th>Job</th></tr>
+    <tr><td>Rules</td><td><code>schemes.js</code> + <code>rule-engine.js</code></td><td>Declarative, testable eligibility logic — the only thing that decides a verdict</td></tr>
+    <tr><td>Validation</td><td><code>validate.js</code></td><td>Sanitizes every input at the API boundary before it reaches the rules</td></tr>
+    <tr><td>Storage</td><td><code>db/index.js</code> (SQLite)</td><td>Scheme metadata + anonymised submission/feedback logs</td></tr>
+    <tr><td>AI client</td><td><code>ai-provider.js</code></td><td>One shared client, three providers, automatic failover + retry</td></tr>
+    <tr><td>AI features</td><td><code>ai-summary.js</code>, <code>chat-assistant.js</code>, <code>action-plan.js</code>, <code>profile-parser.js</code>, <code>document-checklist.js</code>, <code>eligibility-agent.js</code></td><td>Six touchpoints, all grounded in the rule engine's own output</td></tr>
+    <tr><td>API</td><td><code>server.js</code></td><td>Express routes, rate limiting, language normalization</td></tr>
+    <tr><td>Frontend</td><td><code>public/index.html</code></td><td>Form → results → share, with an identical on-device rules fallback for offline/slow connections</td></tr>
+  </table>
+
+  <footer>
+    Built by Eswar Reddy · MIT licensed · full write-up and setup instructions in
+    <a href="https://github.com/Eswereddy">the repo README</a>.
+  </footer>
+
+</div>
+</body>
+</html>
