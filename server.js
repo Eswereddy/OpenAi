@@ -7,6 +7,7 @@
 const path = require("path");
 const fs = require("fs");
 const express = require("express");
+const compression = require("compression");
 const { matchProfile, explainScheme, SCHEME_METADATA } = require("./schemes");
 const { getAllSchemes, logSubmission, getStats, markSchemeVerified, purgeOldSubmissions, logFeedback, getFeedbackStats } = require("./db");
 const { sanitizeProfile } = require("./validate");
@@ -63,7 +64,29 @@ app.use((req, res, next) => {
 // upload endpoint. A body over the limit is rejected by body-parser with a
 // PayloadTooLargeError, caught by the JSON error handler below.
 app.use(express.json({ limit: "50kb" }));
-app.use(express.static(path.join(__dirname, "public")));
+
+// Gzip/brotli-capable compression for every response (the index.html alone is
+// ~330KB uncompressed; this typically cuts that to under a third on the wire
+// with no code changes elsewhere). One small, well-audited dependency for a
+// real, measurable speed win on the slow connections this app targets.
+app.use(compression());
+
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    // service-worker.js controls offline caching itself — it must always be
+    // re-fetched so updates roll out, so it's excluded from the default and
+    // pinned to no-cache below. Everything else (icon, manifest, html) gets a
+    // short cache: fast repeat loads, but a redeploy is never stuck behind a
+    // stale asset for more than an hour.
+    setHeaders(res, filePath) {
+      if (path.basename(filePath) === "service-worker.js") {
+        res.setHeader("Cache-Control", "no-cache");
+      } else {
+        res.setHeader("Cache-Control", "public, max-age=3600");
+      }
+    },
+  })
+);
 
 // Minimal in-memory rate limiting: a fixed window per IP, per route group.
 // No new dependency, no persistence — resets on restart, which is fine for
