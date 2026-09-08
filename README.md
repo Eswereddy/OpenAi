@@ -1,4 +1,4 @@
-> ### 🏆 Judging this? Read this box first (30 seconds), or open **[/for-judges.html](https://am-i-eligible.onrender.com/for-judges.html)** for the full scannable briefing.
+### 🏆 Judging this? Read this box first (30 seconds), or open **[/for-judges.html](https://am-i-eligible.onrender.com/for-judges.html)** for the full scannable briefing.
 > - **What it is:** a rule-engine-first (never AI-decided) welfare eligibility checker for 29 real Indian central + state schemes, in English/Hindi/Telugu.
 > - **What to try in 30 seconds:** open the [live demo](https://am-i-eligible.onrender.com/), tap a "try an example" chip, and watch the whole loop — AI form-fill → rule-engine verdict → AI summary → action plan — run itself.
 > - **What's unusual for a hackathon project:** 83+ automated tests (`npm test`, zero external test deps), 3-provider AI failover so a single API outage never breaks the demo, and every scheme shows its own source/last-verified/version instead of a bare "trust us."
